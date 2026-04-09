@@ -2,6 +2,18 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
+// Sort by time value
+function timeToMinutes(str) {
+  const m = str && str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (!m) return 0
+  let h = parseInt(m[1])
+  const min = parseInt(m[2])
+  const ap = m[3].toUpperCase()
+  if (ap === 'PM' && h !== 12) h += 12
+  if (ap === 'AM' && h === 12) h = 0
+  return h * 60 + min
+}
+
 // Parse "9:30 AM" → { hour: '9', minute: '30', ampm: 'AM' }
 function parseTime(str) {
   const match = str && str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
@@ -121,10 +133,10 @@ export default function App() {
     const maxOrder  = dayEvents.length ? Math.max(...dayEvents.map(e => e.sort_order)) : 0
     if (editId) {
       const { error } = await supabase.from('events').update({ ...form }).eq('id', editId)
-      if (!error) { showToast('Event updated!'); closeForm() }
+      if (!error) { showToast('Event updated!'); closeForm(); fetchEvents() }
     } else {
       const { error } = await supabase.from('events').insert({ ...form, sort_order: maxOrder + 1 })
-      if (!error) { showToast('Event added!'); closeForm() }
+      if (!error) { showToast('Event added!'); closeForm(); fetchEvents() }
     }
     setSaving(false)
   }
@@ -133,10 +145,11 @@ export default function App() {
     await supabase.from('events').delete().eq('id', id)
     setDeleteConfirm(null)
     showToast('Event removed', 'info')
+    fetchEvents()
   }
 
   /* ── Derived data ── */
-  const dayEvents      = events.filter(e => e.day === activeDay)
+  const dayEvents      = events.filter(e => e.day === activeDay).sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time))
   const filteredEvents = filter === 'All' ? dayEvents : dayEvents.filter(e => e.status === filter)
   const bookedCount    = dayEvents.filter(e => e.status === 'Booked').length
   const pendingCount   = dayEvents.filter(e => e.status === 'Pending').length
