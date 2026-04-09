@@ -3,10 +3,10 @@ import { supabase } from './supabase'
 import './App.css'
 
 const STATUS_CONFIG = {
-  Booked:   { label: '✔ Booked',   cls: 'badge-booked' },
-  Pending:  { label: '~ Pending',  cls: 'badge-pending' },
-  Planned:  { label: '→ Planned',  cls: 'badge-planned' },
-  Optional: { label: '○ Optional', cls: 'badge-optional' },
+  Booked:   { label: '✔ Booked',   cls: 'badge-booked',   dot: 'dot-booked'   },
+  Pending:  { label: '~ Pending',  cls: 'badge-pending',  dot: 'dot-pending'  },
+  Planned:  { label: '→ Planned',  cls: 'badge-planned',  dot: 'dot-planned'  },
+  Optional: { label: '○ Optional', cls: 'badge-optional', dot: 'dot-optional' },
 }
 
 const DAYS = {
@@ -17,22 +17,25 @@ const DAYS = {
 const EMPTY_FORM = { day: 1, time: '', activity: '', location: '', status: 'Planned', notes: '' }
 
 export default function App() {
-  const [events, setEvents]           = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [showForm, setShowForm]       = useState(false)
-  const [form, setForm]               = useState(EMPTY_FORM)
-  const [editId, setEditId]           = useState(null)
-  const [saving, setSaving]           = useState(false)
+  const [events, setEvents]               = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [showForm, setShowForm]           = useState(false)
+  const [form, setForm]                   = useState(EMPTY_FORM)
+  const [editId, setEditId]               = useState(null)
+  const [saving, setSaving]               = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [activeDay, setActiveDay]     = useState(1)
-  const [toast, setToast]             = useState(null)
-  const [darkMode, setDarkMode]       = useState(() => localStorage.getItem('darkMode') === 'true')
+  const [activeDay, setActiveDay]         = useState(1)
+  const [toast, setToast]                 = useState(null)
+  const [filter, setFilter]               = useState('All')
+  const [darkMode, setDarkMode]           = useState(() => localStorage.getItem('darkMode') === 'true')
 
-  /* ── Dark mode ────────────────────────── */
-  const toggleDark = () =>
-    setDarkMode(d => { localStorage.setItem('darkMode', String(!d)); return !d })
+  /* ── Dark mode — apply to <html> so body bg works ── */
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
+    localStorage.setItem('darkMode', String(darkMode))
+  }, [darkMode])
 
-  /* ── Keyboard shortcuts ───────────────── */
+  /* ── Keyboard shortcuts ── */
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') {
@@ -44,7 +47,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [showForm, deleteConfirm])
 
-  /* ── Supabase ─────────────────────────── */
+  /* ── Supabase ── */
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
@@ -69,24 +72,16 @@ export default function App() {
     return () => supabase.removeChannel(channel)
   }, [fetchEvents])
 
-  /* ── Form helpers ─────────────────────── */
-  const openAdd = () => {
-    setEditId(null)
-    setForm({ ...EMPTY_FORM, day: activeDay })
-    setShowForm(true)
-  }
-
+  /* ── Form helpers ── */
+  const openAdd = () => { setEditId(null); setForm({ ...EMPTY_FORM, day: activeDay }); setShowForm(true) }
   const openEdit = (ev) => {
     setEditId(ev.id)
     setForm({ day: ev.day, time: ev.time, activity: ev.activity, location: ev.location, status: ev.status, notes: ev.notes || '' })
     setShowForm(true)
   }
-
   const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_FORM) }
-
-  const setField = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }))
-
-  const isValid = form.activity.trim() && form.time.trim() && form.location.trim()
+  const setField  = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }))
+  const isValid   = form.activity.trim() && form.time.trim() && form.location.trim()
 
   const save = async () => {
     if (!isValid) return
@@ -98,7 +93,7 @@ export default function App() {
       if (!error) { showToast('Event updated!'); closeForm() }
     } else {
       const { error } = await supabase.from('events').insert({ ...form, sort_order: maxOrder + 1 })
-      if (!error) { showToast('Event added! 🎉'); closeForm() }
+      if (!error) { showToast('Event added!'); closeForm() }
     }
     setSaving(false)
   }
@@ -109,26 +104,32 @@ export default function App() {
     showToast('Event removed', 'info')
   }
 
-  const dayEvents = events.filter(e => e.day === activeDay)
+  /* ── Derived data ── */
+  const dayEvents      = events.filter(e => e.day === activeDay)
+  const filteredEvents = filter === 'All' ? dayEvents : dayEvents.filter(e => e.status === filter)
+  const bookedCount    = dayEvents.filter(e => e.status === 'Booked').length
+  const pendingCount   = dayEvents.filter(e => e.status === 'Pending').length
+  const bookedPct      = dayEvents.length ? Math.round((bookedCount / dayEvents.length) * 100) : 0
 
-  /* ── Render ───────────────────────────── */
+  /* ── Render ── */
   return (
-    <div className="app" data-theme={darkMode ? 'dark' : 'light'}>
+    <div className="app">
 
       {/* ── Header ── */}
       <header className="header">
-        <div className="header-inner">
-          <div>
-            <h1 className="title">✈️ Banff 2026</h1>
-            <p className="subtitle">April 26–27 &nbsp;·&nbsp; Res #3878741 &nbsp;·&nbsp; 8 people</p>
+        <div className="header-top">
+          <div className="header-brand">
+            <span className="header-icon">✈️</span>
+            <div>
+              <h1 className="title">Banff 2026</h1>
+              <p className="subtitle">April 26–27 &nbsp;·&nbsp; Res #3878741 &nbsp;·&nbsp; 8 people</p>
+            </div>
           </div>
           <div className="header-actions">
-            <button className="btn-theme" onClick={toggleDark} title="Toggle dark mode" aria-label="Toggle dark mode">
+            <button className="btn-theme" onClick={() => setDarkMode(d => !d)} title="Toggle dark mode">
               {darkMode ? '☀️' : '🌙'}
             </button>
-            <button className="btn-primary" onClick={openAdd}>
-              <span>＋</span> Add event
-            </button>
+            <button className="btn-primary" onClick={openAdd}>＋ Add event</button>
           </div>
         </div>
 
@@ -138,7 +139,7 @@ export default function App() {
             <button
               key={d}
               className={`tab ${activeDay === d ? 'tab-active' : ''}`}
-              onClick={() => setActiveDay(d)}
+              onClick={() => { setActiveDay(d); setFilter('All') }}
               style={activeDay === d ? { borderBottomColor: DAYS[d].accent, color: DAYS[d].accent } : {}}
             >
               {DAYS[d].label}
@@ -148,14 +149,53 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── Legend ── */}
-      <div className="legend">
-        {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-          <span key={k} className={`legend-item ${v.cls}`}>{v.label}</span>
-        ))}
-      </div>
+      {/* ── Stats bar ── */}
+      {!loading && dayEvents.length > 0 && (
+        <div className="stats-bar">
+          <div className="stat-chips">
+            <span className="stat-chip">
+              <span className="stat-val">{dayEvents.length}</span>
+              <span className="stat-lbl">events</span>
+            </span>
+            <span className="stat-divider" />
+            <span className="stat-chip chip-booked">
+              <span className="stat-val">{bookedCount}</span>
+              <span className="stat-lbl">booked</span>
+            </span>
+            <span className="stat-divider" />
+            <span className="stat-chip chip-pending">
+              <span className="stat-val">{pendingCount}</span>
+              <span className="stat-lbl">pending</span>
+            </span>
+            <span className="stat-divider" />
+            <span className="stat-chip">
+              <span className="stat-val">{bookedPct}%</span>
+              <span className="stat-lbl">confirmed</span>
+            </span>
+          </div>
+          {/* Progress bar */}
+          <div className="progress-track">
+            <div className="progress-fill" style={{ width: `${bookedPct}%` }} />
+          </div>
+        </div>
+      )}
 
-      {/* ── Event list ── */}
+      {/* ── Filter toolbar ── */}
+      {!loading && dayEvents.length > 0 && (
+        <div className="filter-bar">
+          {['All', ...Object.keys(STATUS_CONFIG)].map(s => (
+            <button
+              key={s}
+              className={`filter-btn ${filter === s ? 'filter-active' : ''} ${s !== 'All' ? STATUS_CONFIG[s].cls : ''}`}
+              onClick={() => setFilter(s)}
+            >
+              {s === 'All' ? `All (${dayEvents.length})` : `${STATUS_CONFIG[s].label} (${dayEvents.filter(e => e.status === s).length})`}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Timeline ── */}
       <main className="main">
         {loading ? (
           <div className="empty">
@@ -166,28 +206,45 @@ export default function App() {
           <div className="empty">
             <div className="empty-icon">🗺️</div>
             <p className="empty-title">No events yet</p>
-            <p className="empty-sub">Click <strong>+ Add event</strong> to start planning {DAYS[activeDay].short}.</p>
+            <p className="empty-sub">Click <strong>＋ Add event</strong> to start planning {DAYS[activeDay].short}.</p>
+          </div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="empty">
+            <div className="empty-icon">🔍</div>
+            <p className="empty-title">No {filter} events</p>
+            <p className="empty-sub">Try a different filter above.</p>
           </div>
         ) : (
-          dayEvents.map((ev, i) => (
-            <div key={ev.id} className="card" style={{ animationDelay: `${i * 40}ms` }}>
-              <div className="card-time">{ev.time}</div>
-              <div className="card-body">
-                <div className="card-title">{ev.activity}</div>
-                <div className="card-loc">📍 {ev.location}</div>
-                {ev.notes && <div className="card-notes">{ev.notes}</div>}
-              </div>
-              <div className="card-right">
-                <span className={`badge ${STATUS_CONFIG[ev.status]?.cls}`}>
-                  {STATUS_CONFIG[ev.status]?.label || ev.status}
-                </span>
-                <div className="card-actions">
-                  <button className="btn-edit" onClick={() => openEdit(ev)} title="Edit event">✎ Edit</button>
-                  <button className="btn-del"  onClick={() => setDeleteConfirm(ev.id)} title="Delete event">✕</button>
+          <div className="timeline">
+            {filteredEvents.map((ev, i) => (
+              <div key={ev.id} className="timeline-item" style={{ animationDelay: `${i * 50}ms` }}>
+                {/* Time column */}
+                <div className="tl-time">{ev.time}</div>
+
+                {/* Connector */}
+                <div className="tl-connector">
+                  <div className={`tl-dot ${STATUS_CONFIG[ev.status]?.dot}`} />
+                  {i < filteredEvents.length - 1 && <div className="tl-line" />}
+                </div>
+
+                {/* Card */}
+                <div className={`tl-card tl-card-${ev.status.toLowerCase()}`}>
+                  <div className="tl-card-header">
+                    <div className="tl-card-title">{ev.activity}</div>
+                    <span className={`badge ${STATUS_CONFIG[ev.status]?.cls}`}>
+                      {STATUS_CONFIG[ev.status]?.label}
+                    </span>
+                  </div>
+                  <div className="tl-card-loc">📍 {ev.location}</div>
+                  {ev.notes && <div className="tl-card-notes">{ev.notes}</div>}
+                  <div className="tl-card-actions">
+                    <button className="btn-edit" onClick={() => openEdit(ev)}>✎ Edit</button>
+                    <button className="btn-del"  onClick={() => setDeleteConfirm(ev.id)}>✕</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </main>
 
@@ -197,9 +254,8 @@ export default function App() {
           <div className="modal" role="dialog" aria-modal="true">
             <div className="modal-header">
               <h2 className="modal-title">{editId ? '✎ Edit event' : '＋ Add event'}</h2>
-              <button className="btn-close" onClick={closeForm} aria-label="Close">✕</button>
+              <button className="btn-close" onClick={closeForm}>✕</button>
             </div>
-
             <div className="form-grid">
               <div className="form-field">
                 <label>Day</label>
@@ -210,54 +266,30 @@ export default function App() {
               </div>
               <div className="form-field">
                 <label>Time *</label>
-                <input
-                  value={form.time}
-                  onChange={setField('time')}
-                  placeholder="e.g. 9:30 AM"
-                />
+                <input value={form.time} onChange={setField('time')} placeholder="e.g. 9:30 AM" />
               </div>
             </div>
-
             <div className="form-field">
               <label>Activity *</label>
-              <input
-                value={form.activity}
-                onChange={setField('activity')}
-                placeholder="What are you doing?"
-                autoFocus
-              />
+              <input value={form.activity} onChange={setField('activity')} placeholder="What are you doing?" autoFocus />
             </div>
-
             <div className="form-field">
               <label>Location *</label>
-              <input
-                value={form.location}
-                onChange={setField('location')}
-                placeholder="Where?"
-              />
+              <input value={form.location} onChange={setField('location')} placeholder="Where?" />
             </div>
-
             <div className="form-field">
               <label>Status</label>
               <select value={form.status} onChange={setField('status')}>
                 {Object.keys(STATUS_CONFIG).map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-
             <div className="form-field">
               <label>Notes</label>
-              <textarea
-                value={form.notes}
-                onChange={setField('notes')}
-                placeholder="Any extra details, links, or reminders…"
-                rows={3}
-              />
+              <textarea value={form.notes} onChange={setField('notes')} placeholder="Any extra details, links, or reminders…" rows={3} />
             </div>
-
             {!isValid && (form.activity || form.time || form.location) && (
               <p className="form-hint">⚠ Activity, time, and location are required.</p>
             )}
-
             <div className="modal-actions">
               <button className="btn-cancel" onClick={closeForm}>Cancel</button>
               <button className="btn-primary" onClick={save} disabled={saving || !isValid}>
@@ -271,7 +303,7 @@ export default function App() {
       {/* ── Delete confirm ── */}
       {deleteConfirm && (
         <div className="overlay" onClick={() => setDeleteConfirm(null)}>
-          <div className="modal modal-sm" role="dialog" aria-modal="true">
+          <div className="modal modal-sm" role="dialog">
             <div className="modal-header">
               <h2 className="modal-title">Remove event?</h2>
               <button className="btn-close" onClick={() => setDeleteConfirm(null)}>✕</button>
