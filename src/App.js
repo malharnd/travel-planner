@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
-// Sort by time value
+/* ── Time helpers ───────────────────────────────── */
 function timeToMinutes(str) {
   const m = str && str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
   if (!m) return 0
@@ -14,29 +14,25 @@ function timeToMinutes(str) {
   return h * 60 + min
 }
 
-// Parse "9:30 AM" → { hour: '9', minute: '30', ampm: 'AM' }
 function parseTime(str) {
-  const match = str && str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
-  if (match) return { hour: match[1], minute: match[2], ampm: match[3].toUpperCase() }
+  const m = str && str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (m) return { hour: m[1], minute: m[2], ampm: m[3].toUpperCase() }
   return { hour: '9', minute: '00', ampm: 'AM' }
 }
 
-// Inline HH : MM : AM/PM segmented picker
 function TimePicker({ value, onChange }) {
-  const parsed = parseTime(value)
-  const [hour,   setHour]   = useState(parsed.hour)
-  const [minute, setMinute] = useState(parsed.minute)
-  const [ampm,   setAmpm]   = useState(parsed.ampm)
-
+  const p = parseTime(value)
+  const [hour, setHour]   = useState(p.hour)
+  const [minute, setMin]  = useState(p.minute)
+  const [ampm, setAmpm]   = useState(p.ampm)
   const emit = (h, m, ap) => onChange(`${h}:${m} ${ap}`)
-
   return (
     <div className="time-picker">
       <select className="tp-seg" value={hour} onChange={e => { setHour(e.target.value); emit(e.target.value, minute, ampm) }}>
         {['1','2','3','4','5','6','7','8','9','10','11','12'].map(h => <option key={h} value={h}>{h}</option>)}
       </select>
       <span className="tp-colon">:</span>
-      <select className="tp-seg" value={minute} onChange={e => { setMinute(e.target.value); emit(hour, e.target.value, ampm) }}>
+      <select className="tp-seg" value={minute} onChange={e => { setMin(e.target.value); emit(hour, e.target.value, ampm) }}>
         {['00','15','30','45'].map(m => <option key={m} value={m}>{m}</option>)}
       </select>
       <select className="tp-seg tp-ampm" value={ampm} onChange={e => { setAmpm(e.target.value); emit(hour, minute, e.target.value) }}>
@@ -47,6 +43,39 @@ function TimePicker({ value, onChange }) {
   )
 }
 
+/* ── Trip helpers ───────────────────────────────── */
+const DAY_ACCENTS = ['#2E86AB','#1A3A5C','#2D6A4F','#8B4513','#6B21A8','#B85C20','#1A5C5A','#C2185B']
+
+function formatTripDate(startDateStr, dayIndex) {
+  const [y, mo, d] = startDateStr.split('-').map(Number)
+  return new Date(y, mo - 1, d + dayIndex)
+    .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+}
+
+function getTripDays(trip) {
+  const days = {}
+  for (let i = 1; i <= trip.num_days; i++) {
+    days[i] = {
+      label:  `Day ${i} — ${formatTripDate(trip.start_date, i - 1)}`,
+      short:  `Day ${i}`,
+      accent: DAY_ACCENTS[(i - 1) % DAY_ACCENTS.length],
+    }
+  }
+  return days
+}
+
+function formatDateRange(trip) {
+  const [y, mo, d] = trip.start_date.split('-').map(Number)
+  const start = new Date(y, mo - 1, d)
+  const end   = new Date(y, mo - 1, d + trip.num_days - 1)
+  const opts  = { month: 'short', day: 'numeric' }
+  if (trip.num_days === 1) return start.toLocaleDateString('en-US', { ...opts, year: 'numeric' })
+  if (start.getMonth() === end.getMonth())
+    return `${start.toLocaleDateString('en-US', opts)}–${end.getDate()}, ${end.getFullYear()}`
+  return `${start.toLocaleDateString('en-US', opts)} – ${end.toLocaleDateString('en-US', { ...opts, year: 'numeric' })}`
+}
+
+/* ── Constants ──────────────────────────────────── */
 const STATUS_CONFIG = {
   Booked:   { label: '✔ Booked',   cls: 'badge-booked',   dot: 'dot-booked'   },
   Pending:  { label: '~ Pending',  cls: 'badge-pending',  dot: 'dot-pending'  },
@@ -54,69 +83,137 @@ const STATUS_CONFIG = {
   Optional: { label: '○ Optional', cls: 'badge-optional', dot: 'dot-optional' },
 }
 
-const DAYS = {
-  1: { label: 'Day 1 — Sunday, April 26',  short: 'Day 1', accent: '#1A3A5C' },
-  2: { label: 'Day 2 — Monday, April 27',  short: 'Day 2', accent: '#2E86AB' },
-}
+const EMPTY_FORM      = { day: 1, time: '9:00 AM', activity: '', location: '', status: 'Planned', notes: '' }
+const EMPTY_TRIP_FORM = { name: '', start_date: '', num_days: 2 }
 
-const EMPTY_FORM = { day: 1, time: '9:00 AM', activity: '', location: '', status: 'Planned', notes: '' }
-
+/* ── App ────────────────────────────────────────── */
 export default function App() {
-  const [events, setEvents]               = useState([])
-  const [loading, setLoading]             = useState(true)
-  const [showForm, setShowForm]           = useState(false)
-  const [form, setForm]                   = useState(EMPTY_FORM)
-  const [editId, setEditId]               = useState(null)
-  const [saving, setSaving]               = useState(false)
+  /* screen */
+  const [screen,       setScreen]       = useState('trips')
+  const [trips,        setTrips]        = useState([])
+  const [loadingTrips, setLoadingTrips] = useState(true)
+  const [activeTrip,   setActiveTrip]   = useState(null)
+
+  /* events */
+  const [events,    setEvents]    = useState([])
+  const [loading,   setLoading]   = useState(false)
+  const [activeDay, setActiveDay] = useState(1)
+  const [filter,    setFilter]    = useState('All')
+
+  /* event form */
+  const [showForm,      setShowForm]      = useState(false)
+  const [form,          setForm]          = useState(EMPTY_FORM)
+  const [editId,        setEditId]        = useState(null)
+  const [saving,        setSaving]        = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [activeDay, setActiveDay]         = useState(1)
-  const [toast, setToast]                 = useState(null)
-  const [filter, setFilter]               = useState('All')
 
-  /* ── Always dark ── */
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark')
-  }, [])
+  /* trip form */
+  const [showTripForm,      setShowTripForm]      = useState(false)
+  const [tripForm,          setTripForm]          = useState(EMPTY_TRIP_FORM)
+  const [savingTrip,        setSavingTrip]        = useState(false)
+  const [deleteTripConfirm, setDeleteTripConfirm] = useState(null)
 
-  /* ── Keyboard shortcuts ── */
+  /* toast */
+  const [toast, setToast] = useState(null)
+
+  /* always dark */
+  useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark') }, [])
+
+  /* keyboard */
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') {
-        if (showForm) closeForm()
-        if (deleteConfirm) setDeleteConfirm(null)
-      }
+      if (e.key !== 'Escape') return
+      if (showForm) closeForm()
+      if (deleteConfirm) setDeleteConfirm(null)
+      if (deleteTripConfirm) setDeleteTripConfirm(null)
+      if (showTripForm) closeTripForm()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [showForm, deleteConfirm])
+  }, [showForm, deleteConfirm, deleteTripConfirm, showTripForm])
 
-  /* ── Supabase ── */
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
     setTimeout(() => setToast(null), 3000)
   }
 
-  const fetchEvents = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .order('day')
-      .order('sort_order')
-    if (!error) setEvents(data || [])
-    setLoading(false)
+  /* ── Trips ────────────────────────────────────── */
+  const fetchTrips = useCallback(async () => {
+    const { data, error } = await supabase.from('trips').select('*').order('start_date')
+    if (!error) setTrips(data || [])
+    setLoadingTrips(false)
   }, [])
 
-  useEffect(() => {
-    fetchEvents()
-    const channel = supabase
-      .channel('events')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, fetchEvents)
-      .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [fetchEvents])
+  useEffect(() => { fetchTrips() }, [fetchTrips])
 
-  /* ── Form helpers ── */
-  const openAdd = () => { setEditId(null); setForm({ ...EMPTY_FORM, day: activeDay }); setShowForm(true) }
+  const openTrip = (trip) => {
+    setActiveTrip(trip)
+    setActiveDay(1)
+    setFilter('All')
+    setScreen('itinerary')
+  }
+
+  const backToTrips = () => {
+    setScreen('trips')
+    setActiveTrip(null)
+    setEvents([])
+    fetchTrips()
+  }
+
+  const closeTripForm = () => { setShowTripForm(false); setTripForm(EMPTY_TRIP_FORM) }
+
+  const createTrip = async () => {
+    if (!tripForm.name.trim() || !tripForm.start_date) return
+    setSavingTrip(true)
+    const { data, error } = await supabase
+      .from('trips')
+      .insert({ name: tripForm.name.trim(), start_date: tripForm.start_date, num_days: Number(tripForm.num_days) })
+      .select().single()
+    if (!error && data) { showToast('Trip created! 🎉'); closeTripForm(); openTrip(data) }
+    setSavingTrip(false)
+  }
+
+  const confirmDeleteTrip = async () => {
+    await supabase.from('trips').delete().eq('id', deleteTripConfirm)
+    setDeleteTripConfirm(null)
+    fetchTrips()
+    showToast('Trip deleted', 'info')
+  }
+
+  const addDay = async () => {
+    const newNum = activeTrip.num_days + 1
+    const { error } = await supabase.from('trips').update({ num_days: newNum }).eq('id', activeTrip.id)
+    if (!error) {
+      const updated = { ...activeTrip, num_days: newNum }
+      setActiveTrip(updated)
+      setActiveDay(newNum)
+      showToast(`Day ${newNum} added!`)
+    }
+  }
+
+  /* ── Events ───────────────────────────────────── */
+  const fetchEvents = useCallback(async () => {
+    if (!activeTrip) return
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('events').select('*')
+      .eq('trip_id', activeTrip.id)
+      .order('day').order('sort_order')
+    if (!error) setEvents(data || [])
+    setLoading(false)
+  }, [activeTrip])
+
+  useEffect(() => {
+    if (!activeTrip) return
+    fetchEvents()
+    const ch = supabase
+      .channel(`events-${activeTrip.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `trip_id=eq.${activeTrip.id}` }, fetchEvents)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [activeTrip, fetchEvents])
+
+  const openAdd  = () => { setEditId(null); setForm({ ...EMPTY_FORM, day: activeDay }); setShowForm(true) }
   const openEdit = (ev) => {
     setEditId(ev.id)
     setForm({ day: ev.day, time: ev.time, activity: ev.activity, location: ev.location, status: ev.status, notes: ev.notes || '' })
@@ -129,13 +226,13 @@ export default function App() {
   const save = async () => {
     if (!isValid) return
     setSaving(true)
-    const dayEvents = events.filter(e => e.day === form.day)
-    const maxOrder  = dayEvents.length ? Math.max(...dayEvents.map(e => e.sort_order)) : 0
+    const dayEvts  = events.filter(e => e.day === form.day)
+    const maxOrder = dayEvts.length ? Math.max(...dayEvts.map(e => e.sort_order)) : 0
     if (editId) {
       const { error } = await supabase.from('events').update({ ...form }).eq('id', editId)
       if (!error) { showToast('Event updated!'); closeForm(); fetchEvents() }
     } else {
-      const { error } = await supabase.from('events').insert({ ...form, sort_order: maxOrder + 1 })
+      const { error } = await supabase.from('events').insert({ ...form, trip_id: activeTrip.id, sort_order: maxOrder + 1 })
       if (!error) { showToast('Event added!'); closeForm(); fetchEvents() }
     }
     setSaving(false)
@@ -148,25 +245,133 @@ export default function App() {
     fetchEvents()
   }
 
-  /* ── Derived data ── */
+  /* ── Derived ──────────────────────────────────── */
+  const days           = activeTrip ? getTripDays(activeTrip) : {}
   const dayEvents      = events.filter(e => e.day === activeDay).sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time))
   const filteredEvents = filter === 'All' ? dayEvents : dayEvents.filter(e => e.status === filter)
   const bookedCount    = dayEvents.filter(e => e.status === 'Booked').length
   const pendingCount   = dayEvents.filter(e => e.status === 'Pending').length
   const bookedPct      = dayEvents.length ? Math.round((bookedCount / dayEvents.length) * 100) : 0
 
-  /* ── Render ── */
-  return (
+  /* ══════════════════════════════════════════════ */
+  /* TRIP LIST SCREEN                               */
+  /* ══════════════════════════════════════════════ */
+  if (screen === 'trips') return (
     <div className="app">
-
-      {/* ── Header ── */}
       <header className="header">
         <div className="header-top">
           <div className="header-brand">
             <span className="header-icon">✈️</span>
             <div>
-              <h1 className="title">Banff 2026</h1>
-              <p className="subtitle">April 26–27 &nbsp;·&nbsp; Res #3878741 &nbsp;·&nbsp; 8 people</p>
+              <h1 className="title">My Trips</h1>
+              <p className="subtitle">Plan and manage your travel itineraries</p>
+            </div>
+          </div>
+          <div className="header-actions">
+            <button className="btn-primary" onClick={() => setShowTripForm(true)}>＋ New trip</button>
+          </div>
+        </div>
+      </header>
+
+      <main className="main" style={{ paddingTop: 16 }}>
+        {loadingTrips ? (
+          <div className="empty"><div className="spinner" /><p>Loading trips…</p></div>
+        ) : trips.length === 0 ? (
+          <div className="empty">
+            <div className="empty-icon">🗺️</div>
+            <p className="empty-title">No trips yet</p>
+            <p className="empty-sub">Click <strong>＋ New trip</strong> to get started.</p>
+          </div>
+        ) : (
+          <div className="trip-list">
+            {trips.map(trip => (
+              <div key={trip.id} className="trip-card" onClick={() => openTrip(trip)}>
+                <div className="trip-card-icon">✈️</div>
+                <div className="trip-card-body">
+                  <div className="trip-card-name">{trip.name}</div>
+                  <div className="trip-card-meta">
+                    <span>📅 {formatDateRange(trip)}</span>
+                    <span className="meta-dot">·</span>
+                    <span>{trip.num_days} {trip.num_days === 1 ? 'day' : 'days'}</span>
+                  </div>
+                </div>
+                <div className="trip-card-arrow">→</div>
+                <button
+                  className="btn-del trip-del"
+                  onClick={e => { e.stopPropagation(); setDeleteTripConfirm(trip.id) }}
+                  title="Delete trip"
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* Create trip modal */}
+      {showTripForm && (
+        <div className="overlay" onClick={e => e.target === e.currentTarget && closeTripForm()}>
+          <div className="modal" role="dialog">
+            <div className="modal-header">
+              <h2 className="modal-title">✈️ New trip</h2>
+              <button className="btn-close" onClick={closeTripForm}>✕</button>
+            </div>
+            <div className="form-field">
+              <label>Trip name *</label>
+              <input value={tripForm.name} onChange={e => setTripForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Japan 2027" autoFocus />
+            </div>
+            <div className="form-grid">
+              <div className="form-field">
+                <label>Start date *</label>
+                <input type="date" value={tripForm.start_date} onChange={e => setTripForm(f => ({ ...f, start_date: e.target.value }))} />
+              </div>
+              <div className="form-field">
+                <label>Number of days</label>
+                <input type="number" min="1" max="30" value={tripForm.num_days} onChange={e => setTripForm(f => ({ ...f, num_days: Math.max(1, parseInt(e.target.value) || 1) }))} />
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-cancel" onClick={closeTripForm}>Cancel</button>
+              <button className="btn-primary" onClick={createTrip} disabled={savingTrip || !tripForm.name.trim() || !tripForm.start_date}>
+                {savingTrip ? 'Creating…' : 'Create trip'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete trip confirm */}
+      {deleteTripConfirm && (
+        <div className="overlay" onClick={() => setDeleteTripConfirm(null)}>
+          <div className="modal modal-sm" role="dialog">
+            <div className="modal-header">
+              <h2 className="modal-title">Delete trip?</h2>
+              <button className="btn-close" onClick={() => setDeleteTripConfirm(null)}>✕</button>
+            </div>
+            <p className="modal-desc">This will permanently delete the trip and all its events. This can't be undone.</p>
+            <div className="modal-actions">
+              <button className="btn-cancel" onClick={() => setDeleteTripConfirm(null)}>Cancel</button>
+              <button className="btn-danger" onClick={confirmDeleteTrip}>Delete trip</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
+    </div>
+  )
+
+  /* ══════════════════════════════════════════════ */
+  /* ITINERARY SCREEN                               */
+  /* ══════════════════════════════════════════════ */
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="header-top">
+          <div className="header-brand">
+            <button className="btn-back" onClick={backToTrips} title="All trips">←</button>
+            <div>
+              <h1 className="title">{activeTrip.name}</h1>
+              <p className="subtitle">{formatDateRange(activeTrip)} · {activeTrip.num_days} {activeTrip.num_days === 1 ? 'day' : 'days'}</p>
             </div>
           </div>
           <div className="header-actions">
@@ -174,54 +379,43 @@ export default function App() {
           </div>
         </div>
 
-        {/* Day tabs */}
+        {/* Day tabs + Add day */}
         <div className="tabs">
-          {[1, 2].map(d => (
-            <button
-              key={d}
-              className={`tab ${activeDay === d ? 'tab-active' : ''}`}
-              onClick={() => { setActiveDay(d); setFilter('All') }}
-              style={activeDay === d ? { borderBottomColor: DAYS[d].accent, color: DAYS[d].accent } : {}}
-            >
-              {DAYS[d].label}
-              <span className="tab-count">{events.filter(e => e.day === d).length}</span>
-            </button>
-          ))}
+          {Object.entries(days).map(([d, day]) => {
+            const dn = Number(d)
+            return (
+              <button
+                key={dn}
+                className={`tab ${activeDay === dn ? 'tab-active' : ''}`}
+                onClick={() => { setActiveDay(dn); setFilter('All') }}
+                style={activeDay === dn ? { borderBottomColor: day.accent, color: day.accent } : {}}
+              >
+                Day {dn}
+                <span className="tab-count">{events.filter(e => e.day === dn).length}</span>
+              </button>
+            )
+          })}
+          <button className="tab tab-add" onClick={addDay} title="Add a day">＋ day</button>
         </div>
       </header>
 
-      {/* ── Stats bar ── */}
+      {/* Stats bar */}
       {!loading && dayEvents.length > 0 && (
         <div className="stats-bar">
           <div className="stat-chips">
-            <span className="stat-chip">
-              <span className="stat-val">{dayEvents.length}</span>
-              <span className="stat-lbl">events</span>
-            </span>
+            <span className="stat-chip"><span className="stat-val">{dayEvents.length}</span><span className="stat-lbl">events</span></span>
             <span className="stat-divider" />
-            <span className="stat-chip chip-booked">
-              <span className="stat-val">{bookedCount}</span>
-              <span className="stat-lbl">booked</span>
-            </span>
+            <span className="stat-chip chip-booked"><span className="stat-val">{bookedCount}</span><span className="stat-lbl">booked</span></span>
             <span className="stat-divider" />
-            <span className="stat-chip chip-pending">
-              <span className="stat-val">{pendingCount}</span>
-              <span className="stat-lbl">pending</span>
-            </span>
+            <span className="stat-chip chip-pending"><span className="stat-val">{pendingCount}</span><span className="stat-lbl">pending</span></span>
             <span className="stat-divider" />
-            <span className="stat-chip">
-              <span className="stat-val">{bookedPct}%</span>
-              <span className="stat-lbl">confirmed</span>
-            </span>
+            <span className="stat-chip"><span className="stat-val">{bookedPct}%</span><span className="stat-lbl">confirmed</span></span>
           </div>
-          {/* Progress bar */}
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${bookedPct}%` }} />
-          </div>
+          <div className="progress-track"><div className="progress-fill" style={{ width: `${bookedPct}%` }} /></div>
         </div>
       )}
 
-      {/* ── Filter toolbar ── */}
+      {/* Filter toolbar */}
       {!loading && dayEvents.length > 0 && (
         <div className="filter-bar">
           {['All', ...Object.keys(STATUS_CONFIG)].map(s => (
@@ -236,18 +430,15 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Timeline ── */}
+      {/* Timeline */}
       <main className="main">
         {loading ? (
-          <div className="empty">
-            <div className="spinner" />
-            <p>Loading your itinerary…</p>
-          </div>
+          <div className="empty"><div className="spinner" /><p>Loading itinerary…</p></div>
         ) : dayEvents.length === 0 ? (
           <div className="empty">
             <div className="empty-icon">🗺️</div>
             <p className="empty-title">No events yet</p>
-            <p className="empty-sub">Click <strong>＋ Add event</strong> to start planning {DAYS[activeDay].short}.</p>
+            <p className="empty-sub">Click <strong>＋ Add event</strong> to start planning {days[activeDay]?.short}.</p>
           </div>
         ) : filteredEvents.length === 0 ? (
           <div className="empty">
@@ -259,28 +450,21 @@ export default function App() {
           <div className="timeline">
             {filteredEvents.map((ev, i) => (
               <div key={ev.id} className="timeline-item" style={{ animationDelay: `${i * 50}ms` }}>
-                {/* Time column */}
                 <div className="tl-time">{ev.time}</div>
-
-                {/* Connector */}
                 <div className="tl-connector">
                   <div className={`tl-dot ${STATUS_CONFIG[ev.status]?.dot}`} />
                   {i < filteredEvents.length - 1 && <div className="tl-line" />}
                 </div>
-
-                {/* Card */}
                 <div className={`tl-card tl-card-${ev.status.toLowerCase()}`}>
                   <div className="tl-card-header">
                     <div className="tl-card-title">{ev.activity}</div>
-                    <span className={`badge ${STATUS_CONFIG[ev.status]?.cls}`}>
-                      {STATUS_CONFIG[ev.status]?.label}
-                    </span>
+                    <span className={`badge ${STATUS_CONFIG[ev.status]?.cls}`}>{STATUS_CONFIG[ev.status]?.label}</span>
                   </div>
                   <div className="tl-card-loc">📍 {ev.location}</div>
                   {ev.notes && <div className="tl-card-notes">{ev.notes}</div>}
                   <div className="tl-card-actions">
                     <button className="btn-edit" onClick={() => openEdit(ev)}>✎ Edit</button>
-                    <button className="btn-del"  onClick={() => setDeleteConfirm(ev.id)}>✕</button>
+                    <button className="btn-del" onClick={() => setDeleteConfirm(ev.id)}>✕</button>
                   </div>
                 </div>
               </div>
@@ -289,10 +473,10 @@ export default function App() {
         )}
       </main>
 
-      {/* ── Add / Edit Modal ── */}
+      {/* Add / Edit Modal */}
       {showForm && (
-        <div className="overlay" onClick={(e) => e.target === e.currentTarget && closeForm()}>
-          <div className="modal" role="dialog" aria-modal="true">
+        <div className="overlay" onClick={e => e.target === e.currentTarget && closeForm()}>
+          <div className="modal" role="dialog">
             <div className="modal-header">
               <h2 className="modal-title">{editId ? '✎ Edit event' : '＋ Add event'}</h2>
               <button className="btn-close" onClick={closeForm}>✕</button>
@@ -301,8 +485,9 @@ export default function App() {
               <div className="form-field">
                 <label>Day</label>
                 <select value={form.day} onChange={setField('day')}>
-                  <option value={1}>Day 1 — April 26</option>
-                  <option value={2}>Day 2 — April 27</option>
+                  {Object.entries(days).map(([d, day]) => (
+                    <option key={d} value={Number(d)}>{day.label}</option>
+                  ))}
                 </select>
               </div>
               <div className="form-field">
@@ -328,8 +513,8 @@ export default function App() {
               <label>Notes</label>
               <textarea value={form.notes} onChange={setField('notes')} placeholder="Any extra details, links, or reminders…" rows={3} />
             </div>
-            {!isValid && (form.activity || form.time || form.location) && (
-              <p className="form-hint">⚠ Activity, time, and location are required.</p>
+            {!isValid && (form.activity || form.location) && (
+              <p className="form-hint">⚠ Activity and location are required.</p>
             )}
             <div className="modal-actions">
               <button className="btn-cancel" onClick={closeForm}>Cancel</button>
@@ -341,7 +526,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Delete confirm ── */}
+      {/* Delete event confirm */}
       {deleteConfirm && (
         <div className="overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal modal-sm" role="dialog">
@@ -358,7 +543,6 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Toast ── */}
       {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
     </div>
   )

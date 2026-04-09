@@ -521,6 +521,58 @@ html, body {
 }
 .toast-info { background: var(--accent-2); }
 
+/* ── Trip list ────────────────────────────────── */
+.trip-list { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+
+.trip-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: border-color var(--t), box-shadow var(--t), transform 0.1s;
+  animation: fadeIn 0.2s ease both;
+}
+.trip-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.trip-card-icon  { font-size: 28px; flex-shrink: 0; }
+.trip-card-body  { flex: 1; min-width: 0; }
+.trip-card-name  { font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.trip-card-meta  { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.meta-dot        { color: var(--border); }
+.trip-card-arrow { font-size: 18px; color: var(--text-muted); flex-shrink: 0; transition: color var(--t), transform 0.15s; }
+.trip-card:hover .trip-card-arrow { color: var(--accent); transform: translateX(3px); }
+.trip-del        { flex-shrink: 0; }
+
+/* ── Back button ──────────────────────────────── */
+.btn-back {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 18px;
+  padding: 6px 12px;
+  cursor: pointer;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all var(--t);
+}
+.btn-back:hover { background: var(--border); color: var(--text-primary); transform: translateX(-2px); }
+
+/* ── Add day tab ──────────────────────────────── */
+.tab-add {
+  flex: none !important;
+  padding: 10px 14px !important;
+  color: var(--accent) !important;
+  border-bottom-color: transparent !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  opacity: 0.8;
+}
+.tab-add:hover { opacity: 1; background: rgba(var(--accent-rgb), 0.06); }
+
 /* ── Mobile ───────────────────────────────────── */
 @media (max-width: 520px) {
   .header { padding: 14px 14px 0; }
