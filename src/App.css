@@ -104,8 +104,11 @@ html, body {
 
 
 /* ── Tabs ─────────────────────────────────────── */
-.tabs { display: flex; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
-.tabs::-webkit-scrollbar { display: none; }
+.tabs { display: flex; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.tabs::-webkit-scrollbar { height: 4px; }
+.tabs::-webkit-scrollbar-track { background: transparent; }
+.tabs::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.tabs::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 .tab {
   flex-shrink: 0;
   padding: 10px 14px;

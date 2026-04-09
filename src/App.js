@@ -173,9 +173,10 @@ export default function App() {
     setSavingTrip(true)
     const { data, error } = await supabase
       .from('trips')
-      .insert({ name: tripForm.name.trim(), start_date: tripForm.start_date, num_days: Number(tripForm.num_days) })
+      .insert({ name: tripForm.name.trim(), start_date: tripForm.start_date, num_days: Math.max(1, parseInt(tripForm.num_days) || 1) })
       .select().single()
-    if (!error && data) { showToast('Trip created! 🎉'); closeTripForm(); openTrip(data) }
+    if (error) { showToast(`Failed to create trip: ${error.message}`, 'info') }
+    else if (data) { showToast('Trip created! 🎉'); closeTripForm(); openTrip(data) }
     setSavingTrip(false)
   }
 
@@ -363,7 +364,7 @@ export default function App() {
               </div>
               <div className="form-field">
                 <label>Number of days</label>
-                <input type="number" min="1" max="30" value={tripForm.num_days} onChange={e => setTripForm(f => ({ ...f, num_days: Math.max(1, parseInt(e.target.value) || 1) }))} />
+                <input type="number" min="1" max="30" value={tripForm.num_days} onChange={e => setTripForm(f => ({ ...f, num_days: e.target.value }))} onBlur={e => setTripForm(f => ({ ...f, num_days: Math.max(1, parseInt(e.target.value) || 1) }))} />
               </div>
             </div>
             <div className="modal-actions">
