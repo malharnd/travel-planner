@@ -296,11 +296,6 @@ export default function App() {
                   </div>
                 </div>
                 <div className="trip-card-arrow">→</div>
-                <button
-                  className="btn-del trip-del"
-                  onClick={e => { e.stopPropagation(); setDeleteTripConfirm(trip.id) }}
-                  title="Delete trip"
-                >✕</button>
               </div>
             ))}
           </div>
@@ -390,7 +385,7 @@ export default function App() {
                 onClick={() => { setActiveDay(dn); setFilter('All') }}
                 style={activeDay === dn ? { borderBottomColor: day.accent, color: day.accent } : {}}
               >
-                Day {dn}
+                {days[dn].label}
                 <span className="tab-count">{events.filter(e => e.day === dn).length}</span>
               </button>
             )
