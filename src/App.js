@@ -2,19 +2,38 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
-// Generate 30-min time slots 6:00 AM – 11:30 PM
-const TIME_OPTIONS = (() => {
-  const opts = []
-  for (let h = 6; h <= 23; h++) {
-    for (const m of [0, 30]) {
-      const hour   = h > 12 ? h - 12 : h === 0 ? 12 : h
-      const period = h >= 12 ? 'PM' : 'AM'
-      const min    = m === 0 ? '00' : '30'
-      opts.push(`${hour}:${min} ${period}`)
-    }
-  }
-  return opts
-})()
+// Parse "9:30 AM" → { hour: '9', minute: '30', ampm: 'AM' }
+function parseTime(str) {
+  const match = str && str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i)
+  if (match) return { hour: match[1], minute: match[2], ampm: match[3].toUpperCase() }
+  return { hour: '9', minute: '00', ampm: 'AM' }
+}
+
+// Inline HH : MM : AM/PM segmented picker
+function TimePicker({ value, onChange }) {
+  const parsed = parseTime(value)
+  const [hour,   setHour]   = useState(parsed.hour)
+  const [minute, setMinute] = useState(parsed.minute)
+  const [ampm,   setAmpm]   = useState(parsed.ampm)
+
+  const emit = (h, m, ap) => onChange(`${h}:${m} ${ap}`)
+
+  return (
+    <div className="time-picker">
+      <select className="tp-seg" value={hour} onChange={e => { setHour(e.target.value); emit(e.target.value, minute, ampm) }}>
+        {['1','2','3','4','5','6','7','8','9','10','11','12'].map(h => <option key={h} value={h}>{h}</option>)}
+      </select>
+      <span className="tp-colon">:</span>
+      <select className="tp-seg" value={minute} onChange={e => { setMinute(e.target.value); emit(hour, e.target.value, ampm) }}>
+        {['00','15','30','45'].map(m => <option key={m} value={m}>{m}</option>)}
+      </select>
+      <select className="tp-seg tp-ampm" value={ampm} onChange={e => { setAmpm(e.target.value); emit(hour, minute, e.target.value) }}>
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
+    </div>
+  )
+}
 
 const STATUS_CONFIG = {
   Booked:   { label: '✔ Booked',   cls: 'badge-booked',   dot: 'dot-booked'   },
@@ -28,7 +47,7 @@ const DAYS = {
   2: { label: 'Day 2 — Monday, April 27',  short: 'Day 2', accent: '#2E86AB' },
 }
 
-const EMPTY_FORM = { day: 1, time: '', activity: '', location: '', status: 'Planned', notes: '' }
+const EMPTY_FORM = { day: 1, time: '9:00 AM', activity: '', location: '', status: 'Planned', notes: '' }
 
 export default function App() {
   const [events, setEvents]               = useState([])
@@ -93,7 +112,7 @@ export default function App() {
   }
   const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_FORM) }
   const setField  = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }))
-  const isValid   = form.activity.trim() && form.time.trim() && form.location.trim()
+  const isValid   = form.activity.trim() && form.location.trim()
 
   const save = async () => {
     if (!isValid) return
@@ -275,10 +294,7 @@ export default function App() {
               </div>
               <div className="form-field">
                 <label>Time *</label>
-                <select value={form.time} onChange={setField('time')}>
-                  <option value="">Select a time…</option>
-                  {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <TimePicker value={form.time || '9:00 AM'} onChange={v => setForm(f => ({ ...f, time: v }))} />
               </div>
             </div>
             <div className="form-field">

@@ -458,6 +458,46 @@ html, body {
   border: 1px solid rgba(245,158,11,0.25);
 }
 
+/* ── Time picker ──────────────────────────────── */
+.time-picker {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color var(--t), box-shadow var(--t);
+}
+.time-picker:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
+}
+.tp-seg {
+  background: none;
+  border: none;
+  padding: 9px 8px;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  outline: none;
+  flex: 1;
+  text-align: center;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.tp-seg:not(:last-child) { border-right: 1px solid var(--border); }
+.tp-ampm { flex: 0.8; font-weight: 600; color: var(--accent); }
+.tp-colon {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 0 2px;
+  user-select: none;
+}
+
 /* ── Toast ────────────────────────────────────── */
 .toast {
   position: fixed;
