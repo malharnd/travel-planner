@@ -2,6 +2,20 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
+// Generate 30-min time slots 6:00 AM – 11:30 PM
+const TIME_OPTIONS = (() => {
+  const opts = []
+  for (let h = 6; h <= 23; h++) {
+    for (const m of [0, 30]) {
+      const hour   = h > 12 ? h - 12 : h === 0 ? 12 : h
+      const period = h >= 12 ? 'PM' : 'AM'
+      const min    = m === 0 ? '00' : '30'
+      opts.push(`${hour}:${min} ${period}`)
+    }
+  }
+  return opts
+})()
+
 const STATUS_CONFIG = {
   Booked:   { label: '✔ Booked',   cls: 'badge-booked',   dot: 'dot-booked'   },
   Pending:  { label: '~ Pending',  cls: 'badge-pending',  dot: 'dot-pending'  },
@@ -27,13 +41,11 @@ export default function App() {
   const [activeDay, setActiveDay]         = useState(1)
   const [toast, setToast]                 = useState(null)
   const [filter, setFilter]               = useState('All')
-  const [darkMode, setDarkMode]           = useState(() => localStorage.getItem('darkMode') === 'true')
 
-  /* ── Dark mode — apply to <html> so body bg works ── */
+  /* ── Always dark ── */
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
-    localStorage.setItem('darkMode', String(darkMode))
-  }, [darkMode])
+    document.documentElement.setAttribute('data-theme', 'dark')
+  }, [])
 
   /* ── Keyboard shortcuts ── */
   useEffect(() => {
@@ -126,9 +138,6 @@ export default function App() {
             </div>
           </div>
           <div className="header-actions">
-            <button className="btn-theme" onClick={() => setDarkMode(d => !d)} title="Toggle dark mode">
-              {darkMode ? '☀️' : '🌙'}
-            </button>
             <button className="btn-primary" onClick={openAdd}>＋ Add event</button>
           </div>
         </div>
@@ -266,7 +275,10 @@ export default function App() {
               </div>
               <div className="form-field">
                 <label>Time *</label>
-                <input value={form.time} onChange={setField('time')} placeholder="e.g. 9:30 AM" />
+                <select value={form.time} onChange={setField('time')}>
+                  <option value="">Select a time…</option>
+                  {TIME_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
             </div>
             <div className="form-field">
