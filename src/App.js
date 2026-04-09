@@ -113,6 +113,11 @@ export default function App() {
   const [savingTrip,        setSavingTrip]        = useState(false)
   const [deleteTripConfirm, setDeleteTripConfirm] = useState(null)
 
+  /* add day */
+  const [showAddDay,  setShowAddDay]  = useState(false)
+  const [addDayDate,  setAddDayDate]  = useState('')
+  const [addingDay,   setAddingDay]   = useState(false)
+
   /* toast */
   const [toast, setToast] = useState(null)
 
@@ -127,10 +132,11 @@ export default function App() {
       if (deleteConfirm) setDeleteConfirm(null)
       if (deleteTripConfirm) setDeleteTripConfirm(null)
       if (showTripForm) closeTripForm()
+      if (showAddDay) setShowAddDay(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [showForm, deleteConfirm, deleteTripConfirm, showTripForm])
+  }, [showForm, deleteConfirm, deleteTripConfirm, showTripForm, showAddDay])
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -180,15 +186,51 @@ export default function App() {
     showToast('Trip deleted', 'info')
   }
 
-  const addDay = async () => {
-    const newNum = activeTrip.num_days + 1
-    const { error } = await supabase.from('trips').update({ num_days: newNum }).eq('id', activeTrip.id)
-    if (!error) {
-      const updated = { ...activeTrip, num_days: newNum }
-      setActiveTrip(updated)
-      setActiveDay(newNum)
-      showToast(`Day ${newNum} added!`)
+  const openAddDay = () => {
+    // Pre-fill with the day after the current end date
+    const [y, m, d] = activeTrip.start_date.split('-').map(Number)
+    const next = new Date(y, m - 1, d + activeTrip.num_days)
+    setAddDayDate(next.toLocaleDateString('en-CA')) // YYYY-MM-DD
+    setShowAddDay(true)
+  }
+
+  const submitAddDay = async () => {
+    if (!addDayDate) return
+    const [ny, nm, nd] = addDayDate.split('-').map(Number)
+    const [sy, sm, sd] = activeTrip.start_date.split('-').map(Number)
+    const picked = new Date(ny, nm - 1, nd)
+    const start  = new Date(sy, sm - 1, sd)
+    const diff   = Math.round((picked - start) / 86400000) // days from start
+
+    // Already exists in the trip?
+    if (diff >= 0 && diff < activeTrip.num_days) {
+      showToast('That date is already in this trip', 'info')
+      return
     }
+
+    setAddingDay(true)
+    if (diff < 0) {
+      // Prepend — shift all existing events forward
+      const shift = -diff
+      await Promise.all(events.map(ev =>
+        supabase.from('events').update({ day: ev.day + shift }).eq('id', ev.id)
+      ))
+      const newNumDays = activeTrip.num_days + shift
+      await supabase.from('trips').update({ start_date: addDayDate, num_days: newNumDays }).eq('id', activeTrip.id)
+      setActiveTrip({ ...activeTrip, start_date: addDayDate, num_days: newNumDays })
+      setActiveDay(1)
+      showToast(`Day added — ${addDayDate} is now Day 1`)
+    } else {
+      // Append (diff >= num_days) — extend trip to cover this date
+      const newNumDays = diff + 1
+      await supabase.from('trips').update({ num_days: newNumDays }).eq('id', activeTrip.id)
+      setActiveTrip({ ...activeTrip, num_days: newNumDays })
+      setActiveDay(newNumDays)
+      showToast(`Day ${newNumDays} added!`)
+    }
+    await fetchEvents()
+    setAddingDay(false)
+    setShowAddDay(false)
   }
 
   /* ── Events ───────────────────────────────────── */
@@ -390,7 +432,7 @@ export default function App() {
               </button>
             )
           })}
-          <button className="tab tab-add" onClick={addDay} title="Add a day">＋ day</button>
+          <button className="tab tab-add" onClick={openAddDay} title="Add a day">＋ day</button>
         </div>
       </header>
 
@@ -515,6 +557,29 @@ export default function App() {
               <button className="btn-cancel" onClick={closeForm}>Cancel</button>
               <button className="btn-primary" onClick={save} disabled={saving || !isValid}>
                 {saving ? 'Saving…' : editId ? 'Save changes' : 'Add event'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add day modal */}
+      {showAddDay && (
+        <div className="overlay" onClick={e => e.target === e.currentTarget && setShowAddDay(false)}>
+          <div className="modal modal-sm" role="dialog">
+            <div className="modal-header">
+              <h2 className="modal-title">＋ Add a day</h2>
+              <button className="btn-close" onClick={() => setShowAddDay(false)}>✕</button>
+            </div>
+            <p className="modal-desc">Pick any date — if it's before the trip start it becomes Day 1 and shifts everything forward.</p>
+            <div className="form-field">
+              <label>Date</label>
+              <input type="date" value={addDayDate} onChange={e => setAddDayDate(e.target.value)} autoFocus />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-cancel" onClick={() => setShowAddDay(false)}>Cancel</button>
+              <button className="btn-primary" onClick={submitAddDay} disabled={addingDay || !addDayDate}>
+                {addingDay ? 'Adding…' : 'Add day'}
               </button>
             </div>
           </div>
