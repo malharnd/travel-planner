@@ -294,7 +294,8 @@ export default function App() {
   const filteredEvents = filter === 'All' ? dayEvents : dayEvents.filter(e => e.status === filter)
   const bookedCount    = dayEvents.filter(e => e.status === 'Booked').length
   const pendingCount   = dayEvents.filter(e => e.status === 'Pending').length
-  const bookedPct      = dayEvents.length ? Math.round((bookedCount / dayEvents.length) * 100) : 0
+  const confirmedCount = dayEvents.filter(e => e.status === 'Booked' || e.status === 'Planned').length
+  const bookedPct      = dayEvents.length ? Math.round((confirmedCount / dayEvents.length) * 100) : 0
 
   /* ══════════════════════════════════════════════ */
   /* TRIP LIST SCREEN                               */
