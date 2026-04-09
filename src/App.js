@@ -294,7 +294,9 @@ export default function App() {
   const filteredEvents = filter === 'All' ? dayEvents : dayEvents.filter(e => e.status === filter)
   const bookedCount    = dayEvents.filter(e => e.status === 'Booked').length
   const pendingCount   = dayEvents.filter(e => e.status === 'Pending').length
-  const confirmedCount = dayEvents.filter(e => e.status === 'Booked' || e.status === 'Planned').length
+  const plannedCount   = dayEvents.filter(e => e.status === 'Planned').length
+  const optionalCount  = dayEvents.filter(e => e.status === 'Optional').length
+  const confirmedCount = bookedCount + plannedCount
   const bookedPct      = dayEvents.length ? Math.round((confirmedCount / dayEvents.length) * 100) : 0
 
   /* ══════════════════════════════════════════════ */
@@ -442,11 +444,15 @@ export default function App() {
       {!loading && dayEvents.length > 0 && (
         <div className="stats-bar">
           <div className="stat-chips">
-            <span className="stat-chip"><span className="stat-val">{dayEvents.length}</span><span className="stat-lbl">events</span></span>
+            <span className="stat-chip"><span className="stat-val">{dayEvents.length}</span><span className="stat-lbl">total</span></span>
             <span className="stat-divider" />
             <span className="stat-chip chip-booked"><span className="stat-val">{bookedCount}</span><span className="stat-lbl">booked</span></span>
             <span className="stat-divider" />
+            <span className="stat-chip chip-planned"><span className="stat-val">{plannedCount}</span><span className="stat-lbl">planned</span></span>
+            <span className="stat-divider" />
             <span className="stat-chip chip-pending"><span className="stat-val">{pendingCount}</span><span className="stat-lbl">pending</span></span>
+            <span className="stat-divider" />
+            <span className="stat-chip chip-optional"><span className="stat-val">{optionalCount}</span><span className="stat-lbl">optional</span></span>
             <span className="stat-divider" />
             <span className="stat-chip"><span className="stat-val">{bookedPct}%</span><span className="stat-lbl">confirmed</span></span>
           </div>

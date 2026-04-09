@@ -159,8 +159,10 @@ html, body {
 .stat-val  { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .stat-lbl  { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .stat-divider { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
-.chip-booked  .stat-val { color: var(--booked-dot);  }
-.chip-pending .stat-val { color: var(--pending-dot); }
+.chip-booked   .stat-val { color: var(--booked-dot);   }
+.chip-planned  .stat-val { color: var(--planned-dot);  }
+.chip-pending  .stat-val { color: var(--pending-dot);  }
+.chip-optional .stat-val { color: var(--optional-dot); }
 
 .progress-track {
   height: 4px;
