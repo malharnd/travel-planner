@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import './App.css'
 
@@ -83,8 +83,21 @@ const STATUS_CONFIG = {
   Optional: { label: '○ Optional', cls: 'badge-optional', dot: 'dot-optional' },
 }
 
-const EMPTY_FORM      = { day: 1, time: '9:00 AM', activity: '', location: '', status: 'Planned', notes: '' }
-const EMPTY_TRIP_FORM = { name: '', start_date: '', num_days: 2 }
+const EMPTY_FORM      = { day: 1, time: '9:00 AM', activity: '', location: '', status: 'Planned', notes: '', category: 'Activity', link: '' }
+const EMPTY_TRIP_FORM = { name: '', start_date: '', num_days: 2, cover_emoji: '✈️', cover_color: '#2E86AB' }
+const REACTION_EMOJIS = ['👍', '🔥', '❓', '😂', '✅']
+
+const CATEGORY_CONFIG = {
+  Activity:      { icon: '🥾' },
+  Food:          { icon: '🍽️' },
+  Transport:     { icon: '🚗' },
+  Accommodation: { icon: '🏨' },
+  Shopping:      { icon: '🛍️' },
+  Entertainment: { icon: '🎭' },
+}
+
+const TRIP_EMOJIS  = ['✈️','🏔️','🏖️','🌍','🗺️','🏕️','🎿','🚢','🌴','🏛️','🎡','🌋']
+const TRIP_COLORS  = ['#2E86AB','#1A3A5C','#2D6A4F','#8B4513','#6B21A8','#B85C20','#1A5C5A','#C2185B','#1565C0','#37474F']
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000)
@@ -146,8 +159,51 @@ export default function App() {
   /* toast */
   const [toast, setToast] = useState(null)
 
+  /* presence */
+  const [presenceUsers, setPresenceUsers] = useState([])
+  const presenceChRef = useRef(null)
+
+  /* reactions */
+  const [reactions, setReactions]           = useState([])
+  const [reactionPicker, setReactionPicker] = useState(null)
+
+  /* suggestion likes */
+  const [suggLikes, setSuggLikes] = useState([])
+
   /* always dark */
   useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark') }, [])
+
+  /* close reaction picker on outside click */
+  useEffect(() => {
+    if (!reactionPicker) return
+    const handler = (e) => {
+      if (!e.target.closest('.reactions-row')) setReactionPicker(null)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [reactionPicker])
+
+  /* Presence channel */
+  useEffect(() => {
+    if (!activeTrip) { setPresenceUsers([]); return }
+    const name  = suggName.trim() || 'Guest'
+    const color = avatarColor(name)
+    const ch = supabase.channel(`presence-trip-${activeTrip.id}`)
+      .on('presence', { event: 'sync' }, () => {
+        const state = ch.presenceState()
+        const seen  = new Set()
+        const users = []
+        Object.values(state).forEach(arr =>
+          arr.forEach(u => { if (!seen.has(u.name)) { seen.add(u.name); users.push(u) } })
+        )
+        setPresenceUsers(users)
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') await ch.track({ name, color })
+      })
+    presenceChRef.current = ch
+    return () => { supabase.removeChannel(ch); setPresenceUsers([]) }
+  }, [activeTrip, suggName])
 
   /* keyboard */
   useEffect(() => {
@@ -158,10 +214,11 @@ export default function App() {
       if (deleteTripConfirm) setDeleteTripConfirm(null)
       if (showTripForm) closeTripForm()
       if (showAddDay) setShowAddDay(false)
+      if (reactionPicker) setReactionPicker(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [showForm, deleteConfirm, deleteTripConfirm, showTripForm, showAddDay])
+  }, [showForm, deleteConfirm, deleteTripConfirm, showTripForm, showAddDay, reactionPicker])
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type })
@@ -198,7 +255,7 @@ export default function App() {
     setSavingTrip(true)
     const { data, error } = await supabase
       .from('trips')
-      .insert({ name: tripForm.name.trim(), start_date: tripForm.start_date, num_days: Math.max(1, parseInt(tripForm.num_days) || 1) })
+      .insert({ name: tripForm.name.trim(), start_date: tripForm.start_date, num_days: Math.max(1, parseInt(tripForm.num_days) || 1), cover_emoji: tripForm.cover_emoji, cover_color: tripForm.cover_color })
       .select().single()
     if (error) { showToast(`Failed to create trip: ${error.message}`, 'info') }
     else if (data) { showToast('Trip created! 🎉'); closeTripForm(); openTrip(data) }
@@ -269,7 +326,26 @@ export default function App() {
     if (!error) setSuggestions(data || [])
   }, [activeTrip])
 
-  useEffect(() => { if (activeTrip) fetchSuggestions() }, [activeTrip, fetchSuggestions])
+  const fetchSuggLikes = useCallback(async () => {
+    if (!activeTrip) return
+    const { data } = await supabase
+      .from('suggestion_likes').select('*')
+      .in('suggestion_id', (await supabase.from('suggestions').select('id').eq('trip_id', activeTrip.id)).data?.map(s => s.id) || [])
+    if (data) setSuggLikes(data)
+  }, [activeTrip])
+
+  const toggleSuggLike = async (suggId) => {
+    const name     = suggName.trim() || 'Anonymous'
+    const existing = suggLikes.find(l => l.suggestion_id === suggId && l.user_name === name)
+    if (existing) {
+      await supabase.from('suggestion_likes').delete().eq('id', existing.id)
+    } else {
+      await supabase.from('suggestion_likes').insert({ suggestion_id: suggId, user_name: name })
+    }
+    fetchSuggLikes()
+  }
+
+  useEffect(() => { if (activeTrip) { fetchSuggestions(); fetchSuggLikes() } }, [activeTrip, fetchSuggestions, fetchSuggLikes])
 
   const addSuggestion = async () => {
     if (!suggName.trim() || !suggText.trim()) return
@@ -288,6 +364,34 @@ export default function App() {
   const deleteSuggestion = async (id) => {
     await supabase.from('suggestions').delete().eq('id', id)
     fetchSuggestions()
+  }
+
+  /* ── Reactions ────────────────────────────────── */
+  const fetchReactions = useCallback(async () => {
+    if (!activeTrip) return
+    const { data } = await supabase.from('reactions').select('*').eq('trip_id', activeTrip.id)
+    if (data) setReactions(data)
+  }, [activeTrip])
+
+  useEffect(() => {
+    if (!activeTrip) return
+    fetchReactions()
+    const ch = supabase.channel(`reactions-${activeTrip.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions', filter: `trip_id=eq.${activeTrip.id}` }, fetchReactions)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [activeTrip, fetchReactions])
+
+  const toggleReaction = async (eventId, emoji) => {
+    const name     = suggName.trim() || 'Anonymous'
+    const existing = reactions.find(r => r.event_id === eventId && r.emoji === emoji && r.user_name === name)
+    if (existing) {
+      await supabase.from('reactions').delete().eq('id', existing.id)
+    } else {
+      await supabase.from('reactions').insert({ event_id: eventId, trip_id: activeTrip.id, emoji, user_name: name })
+    }
+    fetchReactions()
+    setReactionPicker(null)
   }
 
   /* ── Events ───────────────────────────────────── */
@@ -315,7 +419,7 @@ export default function App() {
   const openAdd  = () => { setEditId(null); setForm({ ...EMPTY_FORM, day: activeDay }); setShowForm(true) }
   const openEdit = (ev) => {
     setEditId(ev.id)
-    setForm({ day: ev.day, time: ev.time, activity: ev.activity, location: ev.location, status: ev.status, notes: ev.notes || '' })
+    setForm({ day: ev.day, time: ev.time, activity: ev.activity, location: ev.location, status: ev.status, notes: ev.notes || '', category: ev.category || 'Activity', link: ev.link || '' })
     setShowForm(true)
   }
   const closeForm = () => { setShowForm(false); setEditId(null); setForm(EMPTY_FORM) }
@@ -388,8 +492,8 @@ export default function App() {
         ) : (
           <div className="trip-list">
             {trips.map(trip => (
-              <div key={trip.id} className="trip-card" onClick={() => openTrip(trip)}>
-                <div className="trip-card-icon">✈️</div>
+              <div key={trip.id} className="trip-card" onClick={() => openTrip(trip)} style={{ borderLeft: `4px solid ${trip.cover_color || '#2E86AB'}` }}>
+                <div className="trip-card-icon">{trip.cover_emoji || '✈️'}</div>
                 <div className="trip-card-body">
                   <div className="trip-card-name">{trip.name}</div>
                   <div className="trip-card-meta">
@@ -425,6 +529,22 @@ export default function App() {
               <div className="form-field">
                 <label>Number of days</label>
                 <input type="number" min="1" max="30" value={tripForm.num_days} onChange={e => setTripForm(f => ({ ...f, num_days: e.target.value }))} onBlur={e => setTripForm(f => ({ ...f, num_days: Math.max(1, parseInt(e.target.value) || 1) }))} />
+              </div>
+            </div>
+            <div className="form-field">
+              <label>Cover icon</label>
+              <div className="cover-emoji-picker">
+                {TRIP_EMOJIS.map(e => (
+                  <button key={e} type="button" className={`cover-emoji-btn ${tripForm.cover_emoji === e ? 'cover-emoji-active' : ''}`} onClick={() => setTripForm(f => ({ ...f, cover_emoji: e }))}>{e}</button>
+                ))}
+              </div>
+            </div>
+            <div className="form-field">
+              <label>Cover color</label>
+              <div className="cover-color-picker">
+                {TRIP_COLORS.map(c => (
+                  <button key={c} type="button" className={`cover-color-btn ${tripForm.cover_color === c ? 'cover-color-active' : ''}`} style={{ background: c }} onClick={() => setTripForm(f => ({ ...f, cover_color: c }))} />
+                ))}
               </div>
             </div>
             <div className="modal-actions">
@@ -473,6 +593,19 @@ export default function App() {
             </div>
           </div>
           <div className="header-actions">
+            {presenceUsers.length > 0 && (
+              <div className="presence-cluster">
+                {presenceUsers.slice(0, 4).map((u, i) => (
+                  <div key={u.name} className="presence-avatar" style={{ background: u.color, zIndex: 10 - i }} title={`${u.name} is here`}>
+                    {u.name.charAt(0).toUpperCase()}
+                  </div>
+                ))}
+                {presenceUsers.length > 4 && (
+                  <div className="presence-avatar presence-overflow">+{presenceUsers.length - 4}</div>
+                )}
+                <span className="presence-count">{presenceUsers.length} online</span>
+              </div>
+            )}
             <button className="btn-primary" onClick={openAdd}>＋ Add event</button>
           </div>
         </div>
@@ -562,8 +695,35 @@ export default function App() {
                     <div className="tl-card-title">{ev.activity}</div>
                     <span className={`badge ${STATUS_CONFIG[ev.status]?.cls}`}>{STATUS_CONFIG[ev.status]?.label}</span>
                   </div>
-                  <div className="tl-card-loc">📍 {ev.location}</div>
+                  <div className="tl-card-loc">
+                    <span className="tl-cat-icon">{CATEGORY_CONFIG[ev.category]?.icon || '📍'}</span> {ev.location}
+                    {ev.link && <a className="tl-card-link" href={ev.link} target="_blank" rel="noreferrer">🔗 Link</a>}
+                  </div>
                   {ev.notes && <div className="tl-card-notes">{ev.notes}</div>}
+                  {/* Reactions */}
+                  {(() => {
+                    const evReactions = reactions.filter(r => r.event_id === ev.id)
+                    const grouped = {}
+                    evReactions.forEach(r => { if (!grouped[r.emoji]) grouped[r.emoji] = []; grouped[r.emoji].push(r.user_name) })
+                    const userName = suggName.trim() || 'Anonymous'
+                    return (
+                      <div className="reactions-row">
+                        {Object.entries(grouped).map(([emoji, names]) => (
+                          <button key={emoji} className={`reaction-pill ${names.includes(userName) ? 'reaction-mine' : ''}`} onClick={() => toggleReaction(ev.id, emoji)} title={names.join(', ')}>
+                            {emoji} {names.length}
+                          </button>
+                        ))}
+                        <button className="reaction-add-btn" onClick={() => setReactionPicker(reactionPicker === ev.id ? null : ev.id)}>＋</button>
+                        {reactionPicker === ev.id && (
+                          <div className="reaction-picker">
+                            {REACTION_EMOJIS.map(e => (
+                              <button key={e} className="reaction-picker-btn" onClick={() => toggleReaction(ev.id, e)}>{e}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   <div className="tl-card-actions">
                     <button className="btn-edit" onClick={() => openEdit(ev)}>✎ Edit</button>
                     <button className="btn-del" onClick={() => setDeleteConfirm(ev.id)}>✕</button>
@@ -605,11 +765,25 @@ export default function App() {
               <label>Location *</label>
               <input value={form.location} onChange={setField('location')} placeholder="Where?" />
             </div>
+            <div className="form-grid">
+              <div className="form-field">
+                <label>Category</label>
+                <select value={form.category} onChange={setField('category')}>
+                  {Object.entries(CATEGORY_CONFIG).map(([cat, cfg]) => (
+                    <option key={cat} value={cat}>{cfg.icon} {cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label>Status</label>
+                <select value={form.status} onChange={setField('status')}>
+                  {Object.keys(STATUS_CONFIG).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
             <div className="form-field">
-              <label>Status</label>
-              <select value={form.status} onChange={setField('status')}>
-                {Object.keys(STATUS_CONFIG).map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <label>Link</label>
+              <input value={form.link} onChange={setField('link')} placeholder="https://… (booking, maps, website)" />
             </div>
             <div className="form-field">
               <label>Notes</label>
@@ -663,19 +837,28 @@ export default function App() {
         )}
 
         <div className="sugg-list">
-          {daySuggestions.map(s => (
-            <div key={s.id} className="sugg-card">
-              <div className="sugg-avatar" style={{ background: avatarColor(s.name) }}>{nameInitial(s.name)}</div>
-              <div className="sugg-body">
-                <div className="sugg-meta">
-                  <span className="sugg-name">{s.name}</span>
-                  <span className="sugg-time">{timeAgo(s.created_at)}</span>
+          {daySuggestions.map(s => {
+            const likes    = suggLikes.filter(l => l.suggestion_id === s.id)
+            const liked    = likes.some(l => l.user_name === (suggName.trim() || 'Anonymous'))
+            return (
+              <div key={s.id} className="sugg-card">
+                <div className="sugg-avatar" style={{ background: avatarColor(s.name) }}>{nameInitial(s.name)}</div>
+                <div className="sugg-body">
+                  <div className="sugg-meta">
+                    <span className="sugg-name">{s.name}</span>
+                    <span className="sugg-time">{timeAgo(s.created_at)}</span>
+                  </div>
+                  <p className="sugg-text">{s.text}</p>
                 </div>
-                <p className="sugg-text">{s.text}</p>
+                <div className="sugg-actions">
+                  <button className={`sugg-like ${liked ? 'sugg-like-active' : ''}`} onClick={() => toggleSuggLike(s.id)} title={likes.map(l => l.user_name).join(', ') || 'Like'}>
+                    👍 {likes.length > 0 && <span>{likes.length}</span>}
+                  </button>
+                  <button className="sugg-del" onClick={() => deleteSuggestion(s.id)} title="Remove">✕</button>
+                </div>
               </div>
-              <button className="sugg-del" onClick={() => deleteSuggestion(s.id)} title="Remove">✕</button>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="sugg-form">
