@@ -200,15 +200,18 @@ export default function App() {
   const [suggLikes, setSuggLikes] = useState([])
 
   /* weather */
-  const [weather, setWeather] = useState({}) // { dayIndex: { emoji, high, low } }
+  const [weather, setWeather]         = useState({})
+  const [weatherTripId, setWeatherTripId] = useState(null)
 
   /* always dark */
   useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark') }, [])
 
   /* Weather fetch */
   useEffect(() => {
-    if (!activeTrip?.location) return
     setWeather({})
+    setWeatherTripId(null)
+    if (!activeTrip?.location) return
+    const tripId = activeTrip.id
     const fetchWeather = async () => {
       try {
         // Geocode city → lat/lon
@@ -222,7 +225,8 @@ export default function App() {
         const today     = new Date(); today.setHours(0,0,0,0)
         const tripStart = new Date(y, m - 1, d)
         const tripEnd   = new Date(y, m - 1, d + activeTrip.num_days - 1)
-        const fmt = (dt) => dt.toLocaleDateString('en-CA')
+        const daysUntilStart = Math.ceil((tripStart - today) / 86400000)
+        if (daysUntilStart > 15) return // trip too far in future for 16-day forecast
         const daysNeeded = Math.ceil((tripEnd - today) / 86400000) + 1
         if (daysNeeded < 1) return // trip is in the past
 
@@ -250,6 +254,7 @@ export default function App() {
           }
         })
         setWeather(result)
+        setWeatherTripId(tripId)
       } catch (e) { /* silently fail */ }
     }
     fetchWeather()
@@ -711,7 +716,7 @@ export default function App() {
               >
                 {days[dn].label}
                 <span className="tab-count">{events.filter(e => e.day === dn).length}</span>
-                {weather[dn] && (
+                {weatherTripId === activeTrip?.id && weather[dn] && (
                   <span className="tab-weather">{weather[dn].emoji} {weather[dn].high}°</span>
                 )}
               </button>
@@ -742,7 +747,7 @@ export default function App() {
       )}
 
       {/* Weather card */}
-      {weather[activeDay] && (
+      {weatherTripId === activeTrip?.id && weather[activeDay] && (
         <div className="weather-card">
           <span className="wx-emoji">{weather[activeDay].emoji}</span>
           <div className="wx-details">
