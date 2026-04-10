@@ -84,7 +84,36 @@ const STATUS_CONFIG = {
 }
 
 const EMPTY_FORM      = { day: 1, time: '9:00 AM', activity: '', location: '', status: 'Planned', notes: '', category: 'Activity', link: '' }
-const EMPTY_TRIP_FORM = { name: '', start_date: '', num_days: 2, cover_emoji: '✈️', cover_color: '#2E86AB' }
+const EMPTY_TRIP_FORM = { name: '', start_date: '', num_days: 2, cover_emoji: '✈️', cover_color: '#2E86AB', location: '' }
+
+const WMO_EMOJI = (code) => {
+  if (code === 0)            return '☀️'
+  if (code <= 2)             return '⛅'
+  if (code <= 3)             return '☁️'
+  if (code <= 48)            return '🌫️'
+  if (code <= 57)            return '🌦️'
+  if (code <= 67)            return '🌧️'
+  if (code <= 77)            return '❄️'
+  if (code <= 82)            return '🌧️'
+  if (code <= 86)            return '🌨️'
+  if (code <= 99)            return '⛈️'
+  return '🌡️'
+}
+
+const WMO_LABEL = (code) => {
+  if (code === 0)            return 'Clear sky'
+  if (code === 1)            return 'Mainly clear'
+  if (code === 2)            return 'Partly cloudy'
+  if (code === 3)            return 'Overcast'
+  if (code <= 48)            return 'Foggy'
+  if (code <= 57)            return 'Drizzle'
+  if (code <= 67)            return 'Rain'
+  if (code <= 77)            return 'Snow'
+  if (code <= 82)            return 'Rain showers'
+  if (code <= 86)            return 'Snow showers'
+  if (code <= 99)            return 'Thunderstorm'
+  return 'Unknown'
+}
 const REACTION_EMOJIS = ['👍', '🔥', '❓', '😂', '✅']
 
 const CATEGORY_CONFIG = {
@@ -170,8 +199,61 @@ export default function App() {
   /* suggestion likes */
   const [suggLikes, setSuggLikes] = useState([])
 
+  /* weather */
+  const [weather, setWeather] = useState({}) // { dayIndex: { emoji, high, low } }
+
   /* always dark */
   useEffect(() => { document.documentElement.setAttribute('data-theme', 'dark') }, [])
+
+  /* Weather fetch */
+  useEffect(() => {
+    if (!activeTrip?.location) return
+    setWeather({})
+    const fetchWeather = async () => {
+      try {
+        // Geocode city → lat/lon
+        const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(activeTrip.location)}&count=1`)
+        const geoData = await geoRes.json()
+        const place = geoData.results?.[0]
+        if (!place) return
+
+        // Calculate how many forecast days we need from today
+        const [y, m, d] = activeTrip.start_date.split('-').map(Number)
+        const today     = new Date(); today.setHours(0,0,0,0)
+        const tripStart = new Date(y, m - 1, d)
+        const tripEnd   = new Date(y, m - 1, d + activeTrip.num_days - 1)
+        const fmt = (dt) => dt.toLocaleDateString('en-CA')
+        const daysNeeded = Math.ceil((tripEnd - today) / 86400000) + 1
+        if (daysNeeded < 1) return // trip is in the past
+
+        const wxRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}` +
+          `&daily=temperature_2m_max,temperature_2m_min,weather_code&timezone=auto&forecast_days=${Math.min(daysNeeded, 16)}`
+        )
+        const wxData = await wxRes.json()
+        if (!wxData.daily) return
+
+        // Match returned dates to trip day indices
+        const result = {}
+        wxData.daily.time.forEach((dateStr, i) => {
+          const date = new Date(dateStr)
+          const dayIdx = Math.round((date - tripStart) / 86400000) + 1
+          if (dayIdx >= 1 && dayIdx <= activeTrip.num_days) {
+            const code = wxData.daily.weather_code[i]
+            result[dayIdx] = {
+              emoji:        WMO_EMOJI(code),
+              condition:    WMO_LABEL(code),
+              high:         Math.round(wxData.daily.temperature_2m_max[i]),
+              low:          Math.round(wxData.daily.temperature_2m_min[i]),
+              locationName: place.name,
+            }
+          }
+        })
+        setWeather(result)
+      } catch (e) { /* silently fail */ }
+    }
+    fetchWeather()
+  }, [activeTrip])
 
   /* close reaction picker on outside click */
   useEffect(() => {
@@ -257,7 +339,7 @@ export default function App() {
     setSavingTrip(true)
     const { data, error } = await supabase
       .from('trips')
-      .insert({ name: tripForm.name.trim(), start_date: tripForm.start_date, num_days: Math.max(1, parseInt(tripForm.num_days) || 1), cover_emoji: tripForm.cover_emoji, cover_color: tripForm.cover_color })
+      .insert({ name: tripForm.name.trim(), start_date: tripForm.start_date, num_days: Math.max(1, parseInt(tripForm.num_days) || 1), cover_emoji: tripForm.cover_emoji, cover_color: tripForm.cover_color, location: tripForm.location.trim() || null })
       .select().single()
     if (error) { showToast(`Failed to create trip: ${error.message}`, 'info') }
     else if (data) { showToast('Trip created! 🎉'); closeTripForm(); openTrip(data) }
@@ -523,6 +605,10 @@ export default function App() {
               <label>Trip name *</label>
               <input value={tripForm.name} onChange={e => setTripForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Japan 2027" autoFocus />
             </div>
+            <div className="form-field">
+              <label>City / Location</label>
+              <input value={tripForm.location} onChange={e => setTripForm(f => ({ ...f, location: e.target.value }))} placeholder="e.g. Banff, Tokyo, Paris" />
+            </div>
             <div className="form-grid">
               <div className="form-field">
                 <label>Start date *</label>
@@ -625,6 +711,9 @@ export default function App() {
               >
                 {days[dn].label}
                 <span className="tab-count">{events.filter(e => e.day === dn).length}</span>
+                {weather[dn] && (
+                  <span className="tab-weather">{weather[dn].emoji} {weather[dn].high}°</span>
+                )}
               </button>
             )
           })}
@@ -649,6 +738,30 @@ export default function App() {
             <span className="stat-chip"><span className="stat-val">{bookedPct}%</span><span className="stat-lbl">confirmed</span></span>
           </div>
           <div className="progress-track"><div className="progress-fill" style={{ width: `${bookedPct}%` }} /></div>
+        </div>
+      )}
+
+      {/* Weather card */}
+      {weather[activeDay] && (
+        <div className="weather-card">
+          <span className="wx-emoji">{weather[activeDay].emoji}</span>
+          <div className="wx-details">
+            <span className="wx-condition">{weather[activeDay].condition}</span>
+            <span className="wx-temps">
+              <span className="wx-high">↑ {weather[activeDay].high}°C</span>
+              <span className="wx-low">↓ {weather[activeDay].low}°C</span>
+            </span>
+          </div>
+          <div className="wx-location">
+            <span className="wx-pin">📍</span>
+            <span>{weather[activeDay].locationName}</span>
+          </div>
+          <a
+            className="wx-credit"
+            href="https://open-meteo.com"
+            target="_blank"
+            rel="noreferrer"
+          >Open-Meteo</a>
         </div>
       )}
 
