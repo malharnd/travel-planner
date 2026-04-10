@@ -186,20 +186,22 @@ export default function App() {
   /* Presence channel */
   useEffect(() => {
     if (!activeTrip) { setPresenceUsers([]); return }
-    const name  = suggName.trim() || 'Guest'
-    const color = avatarColor(name)
+    const name      = suggName.trim() || 'Guest'
+    const color     = avatarColor(name)
+    const sessionId = sessionStorage.getItem('presenceId') || (() => {
+      const id = Math.random().toString(36).slice(2)
+      sessionStorage.setItem('presenceId', id)
+      return id
+    })()
     const ch = supabase.channel(`presence-trip-${activeTrip.id}`)
       .on('presence', { event: 'sync' }, () => {
         const state = ch.presenceState()
-        const seen  = new Set()
         const users = []
-        Object.values(state).forEach(arr =>
-          arr.forEach(u => { if (!seen.has(u.name)) { seen.add(u.name); users.push(u) } })
-        )
+        Object.values(state).forEach(arr => arr.forEach(u => users.push(u)))
         setPresenceUsers(users)
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') await ch.track({ name, color })
+        if (status === 'SUBSCRIBED') await ch.track({ name, color, sessionId })
       })
     presenceChRef.current = ch
     return () => { supabase.removeChannel(ch); setPresenceUsers([]) }
