@@ -569,6 +569,20 @@ html, body {
 .btn-back:hover { background: var(--border); color: var(--text-primary); transform: translateX(-2px); }
 
 /* ── Add day tab ──────────────────────────────── */
+.tab-weather {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
 .tab-add {
   flex: none !important;
   padding: 10px 14px !important;
@@ -913,6 +927,60 @@ html, body {
   line-height: 1;
 }
 .reaction-picker-btn:hover { background: var(--surface-2); transform: scale(1.25); }
+
+/* ── Weather card ────────────────────────────── */
+.weather-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 20px 0;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.wx-emoji {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.wx-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.wx-condition {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.wx-temps {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+.wx-high { color: #E05E2B; font-weight: 600; }
+.wx-low  { color: #5B9BD5; font-weight: 600; }
+.wx-location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.wx-pin { font-size: 12px; }
+.wx-credit {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.wx-credit:hover { opacity: 1; text-decoration: underline; }
 
 /* ── Mobile ───────────────────────────────────── */
 @media (max-width: 520px) {
