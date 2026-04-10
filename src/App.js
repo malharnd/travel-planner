@@ -86,6 +86,25 @@ const STATUS_CONFIG = {
 const EMPTY_FORM      = { day: 1, time: '9:00 AM', activity: '', location: '', status: 'Planned', notes: '' }
 const EMPTY_TRIP_FORM = { name: '', start_date: '', num_days: 2 }
 
+function timeAgo(dateStr) {
+  const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000)
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return `${Math.floor(diff / 86400)}d ago`
+}
+
+function nameInitial(name) {
+  return name.trim().charAt(0).toUpperCase()
+}
+
+const AVATAR_COLORS = ['#2E86AB','#2D6A4F','#8B4513','#6B21A8','#B85C20','#1A5C5A','#C2185B','#1565C0']
+function avatarColor(name) {
+  let hash = 0
+  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) & 0xffff
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length]
+}
+
 /* ── App ────────────────────────────────────────── */
 export default function App() {
   /* screen */
@@ -117,6 +136,12 @@ export default function App() {
   const [showAddDay,  setShowAddDay]  = useState(false)
   const [addDayDate,  setAddDayDate]  = useState('')
   const [addingDay,   setAddingDay]   = useState(false)
+
+  /* suggestions */
+  const [suggestions,  setSuggestions]  = useState([])
+  const [suggName,     setSuggName]     = useState(() => localStorage.getItem('suggName') || '')
+  const [suggText,     setSuggText]     = useState('')
+  const [addingSugg,   setAddingSugg]   = useState(false)
 
   /* toast */
   const [toast, setToast] = useState(null)
@@ -234,6 +259,37 @@ export default function App() {
     setShowAddDay(false)
   }
 
+  /* ── Suggestions ─────────────────────────────── */
+  const fetchSuggestions = useCallback(async () => {
+    if (!activeTrip) return
+    const { data, error } = await supabase
+      .from('suggestions').select('*')
+      .eq('trip_id', activeTrip.id)
+      .order('created_at')
+    if (!error) setSuggestions(data || [])
+  }, [activeTrip])
+
+  useEffect(() => { if (activeTrip) fetchSuggestions() }, [activeTrip, fetchSuggestions])
+
+  const addSuggestion = async () => {
+    if (!suggName.trim() || !suggText.trim()) return
+    setAddingSugg(true)
+    localStorage.setItem('suggName', suggName.trim())
+    const { error } = await supabase.from('suggestions').insert({
+      trip_id: activeTrip.id,
+      day: activeDay,
+      name: suggName.trim(),
+      text: suggText.trim(),
+    })
+    if (!error) { setSuggText(''); fetchSuggestions() }
+    setAddingSugg(false)
+  }
+
+  const deleteSuggestion = async (id) => {
+    await supabase.from('suggestions').delete().eq('id', id)
+    fetchSuggestions()
+  }
+
   /* ── Events ───────────────────────────────────── */
   const fetchEvents = useCallback(async () => {
     if (!activeTrip) return
@@ -289,6 +345,7 @@ export default function App() {
   }
 
   /* ── Derived ──────────────────────────────────── */
+  const daySuggestions = suggestions.filter(s => s.day === activeDay)
   const days           = activeTrip ? getTripDays(activeTrip) : {}
   const dayEvents      = events.filter(e => e.day === activeDay).sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time))
   const filteredEvents = filter === 'All' ? dayEvents : dayEvents.filter(e => e.status === filter)
@@ -593,6 +650,59 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Suggestions panel */}
+      <section className="sugg-panel">
+        <div className="sugg-header">
+          <span className="sugg-title">💡 Suggestions</span>
+          {daySuggestions.length > 0 && <span className="sugg-count">{daySuggestions.length}</span>}
+        </div>
+
+        {daySuggestions.length === 0 && (
+          <p className="sugg-empty">No suggestions yet for this day. Be the first!</p>
+        )}
+
+        <div className="sugg-list">
+          {daySuggestions.map(s => (
+            <div key={s.id} className="sugg-card">
+              <div className="sugg-avatar" style={{ background: avatarColor(s.name) }}>{nameInitial(s.name)}</div>
+              <div className="sugg-body">
+                <div className="sugg-meta">
+                  <span className="sugg-name">{s.name}</span>
+                  <span className="sugg-time">{timeAgo(s.created_at)}</span>
+                </div>
+                <p className="sugg-text">{s.text}</p>
+              </div>
+              <button className="sugg-del" onClick={() => deleteSuggestion(s.id)} title="Remove">✕</button>
+            </div>
+          ))}
+        </div>
+
+        <div className="sugg-form">
+          <input
+            className="sugg-input"
+            placeholder="Your name"
+            value={suggName}
+            onChange={e => setSuggName(e.target.value)}
+          />
+          <div className="sugg-row">
+            <input
+              className="sugg-input sugg-input-grow"
+              placeholder="Add a suggestion for this day…"
+              value={suggText}
+              onChange={e => setSuggText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && addSuggestion()}
+            />
+            <button
+              className="btn-primary sugg-submit"
+              onClick={addSuggestion}
+              disabled={addingSugg || !suggName.trim() || !suggText.trim()}
+            >
+              {addingSugg ? '…' : 'Post'}
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* Delete event confirm */}
       {deleteConfirm && (

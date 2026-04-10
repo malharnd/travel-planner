@@ -580,6 +580,144 @@ html, body {
 }
 .tab-add:hover { opacity: 1; background: rgba(var(--accent-rgb), 0.06); }
 
+/* ── Suggestions panel ────────────────────────── */
+.sugg-panel {
+  margin: 8px 16px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.sugg-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sugg-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.sugg-count {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 20px;
+}
+
+.sugg-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 16px 16px 4px;
+}
+
+.sugg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sugg-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  animation: fadeIn 0.2s ease both;
+  transition: background var(--t);
+}
+.sugg-card:hover { background: var(--surface-2); }
+.sugg-card:last-child { border-bottom: none; }
+
+.sugg-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sugg-body { flex: 1; min-width: 0; }
+.sugg-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.sugg-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.sugg-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.sugg-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.sugg-del {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity var(--t), background var(--t), color var(--t);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.sugg-card:hover .sugg-del { opacity: 1; }
+.sugg-del:hover { background: var(--border); color: #DC2626; }
+
+.sugg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.sugg-row {
+  display: flex;
+  gap: 10px;
+}
+.sugg-input {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--surface);
+  font-family: inherit;
+  transition: border-color var(--t), box-shadow var(--t);
+  width: 100%;
+}
+.sugg-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
+}
+.sugg-input-grow { flex: 1; }
+.sugg-submit { padding: 10px 18px; font-size: 13px; flex-shrink: 0; }
+
 /* ── Mobile ───────────────────────────────────── */
 @media (max-width: 520px) {
   .header { padding: 14px 14px 0; }
