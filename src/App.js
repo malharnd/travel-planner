@@ -84,6 +84,16 @@ const STATUS_CONFIG = {
 }
 
 const EMPTY_FORM      = { day: 1, time: '9:00 AM', activity: '', location: '', status: 'Planned', notes: '', category: 'Activity', link: '' }
+
+// Parse link column: supports legacy plain URL or JSON array [{label,url}]
+function parseLinks(linkStr) {
+  if (!linkStr) return []
+  try {
+    const parsed = JSON.parse(linkStr)
+    if (Array.isArray(parsed)) return parsed
+  } catch {}
+  return [{ label: 'Link', url: linkStr }] // legacy plain URL
+}
 const EMPTY_TRIP_FORM = { name: '', start_date: '', num_days: 2, cover_emoji: '✈️', cover_color: '#2E86AB', location: '' }
 
 const WMO_EMOJI = (code) => {
@@ -527,6 +537,28 @@ export default function App() {
 
   const docUrl = (path) => supabase.storage.from('event-docs').getPublicUrl(path).data.publicUrl
 
+  /* ── Event links ──────────────────────────────── */
+  const [linkForm, setLinkForm] = useState(null) // { eventId, label, url }
+
+  const addLink = async (eventId, label, url) => {
+    const ev = events.find(e => e.id === eventId)
+    if (!ev) return
+    const existing = parseLinks(ev.link)
+    const updated = [...existing, { label: label.trim() || 'Link', url: url.trim() }]
+    await supabase.from('events').update({ link: JSON.stringify(updated) }).eq('id', eventId)
+    fetchEvents()
+    setLinkForm(null)
+  }
+
+  const removeLink = async (eventId, idx) => {
+    const ev = events.find(e => e.id === eventId)
+    if (!ev) return
+    const existing = parseLinks(ev.link)
+    existing.splice(idx, 1)
+    await supabase.from('events').update({ link: existing.length ? JSON.stringify(existing) : null }).eq('id', eventId)
+    fetchEvents()
+  }
+
   /* ── Events ───────────────────────────────────── */
   const fetchEvents = useCallback(async () => {
     if (!activeTrip) return
@@ -861,7 +893,25 @@ export default function App() {
                   </div>
                   <div className="tl-card-loc">
                     <span className="tl-cat-icon">{CATEGORY_CONFIG[ev.category]?.icon || '📍'}</span> {ev.location}
-                    {ev.link && <a className="tl-card-link" href={ev.link} target="_blank" rel="noreferrer">🔗 Link</a>}
+                    <div className="ev-links-row">
+                      {parseLinks(ev.link).map((lk, idx) => (
+                        <span key={idx} className="ev-link-group">
+                          <a className="tl-card-link" href={lk.url} target="_blank" rel="noreferrer">🔗 {lk.label}</a>
+                          <button className="ev-link-del" onClick={() => removeLink(ev.id, idx)} title="Remove link">✕</button>
+                        </span>
+                      ))}
+                      {linkForm?.eventId === ev.id ? (
+                        <span className="ev-link-adder">
+                          <input className="ev-link-input" placeholder="Label" value={linkForm.label} onChange={e => setLinkForm(f => ({ ...f, label: e.target.value }))} />
+                          <input className="ev-link-input ev-link-url" placeholder="https://…" value={linkForm.url} onChange={e => setLinkForm(f => ({ ...f, url: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter' && linkForm.url) addLink(ev.id, linkForm.label, linkForm.url); if (e.key === 'Escape') setLinkForm(null) }} />
+                          <button className="ev-link-save" onClick={() => linkForm.url && addLink(ev.id, linkForm.label, linkForm.url)} disabled={!linkForm.url}>Add</button>
+                          <button className="ev-link-cancel" onClick={() => setLinkForm(null)}>✕</button>
+                        </span>
+                      ) : (
+                        <button className="ev-link-add-btn" onClick={() => setLinkForm({ eventId: ev.id, label: '', url: '' })}>＋ link</button>
+                      )}
+                    </div>
                   </div>
                   {ev.notes && <div className="tl-card-notes">{ev.notes}</div>}
                   {/* Documents */}
@@ -965,10 +1015,6 @@ export default function App() {
                   {Object.keys(STATUS_CONFIG).map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-            </div>
-            <div className="form-field">
-              <label>Link</label>
-              <input value={form.link} onChange={setField('link')} placeholder="https://… (booking, maps, website)" />
             </div>
             <div className="form-field">
               <label>Notes</label>

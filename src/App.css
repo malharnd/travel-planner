@@ -928,6 +928,70 @@ html, body {
 }
 .reaction-picker-btn:hover { background: var(--surface-2); transform: scale(1.25); }
 
+/* ── Event multi-links ───────────────────────── */
+.ev-links-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.ev-link-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.tl-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-2);
+  background: rgba(46,134,171,0.10);
+  border: 1px solid rgba(46,134,171,0.25);
+  border-radius: 20px;
+  padding: 2px 10px;
+  text-decoration: none;
+  transition: background var(--t);
+}
+.tl-card-link:hover { background: rgba(46,134,171,0.20); text-decoration: none; }
+.ev-link-del {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 10px; padding: 0 2px;
+  opacity: 0; transition: opacity var(--t);
+  line-height: 1;
+}
+.ev-link-group:hover .ev-link-del { opacity: 1; }
+.ev-link-del:hover { color: #ef4444; }
+.ev-link-add-btn {
+  font-size: 11px; color: var(--text-muted); background: none;
+  border: 1px dashed var(--border); border-radius: 20px;
+  padding: 2px 9px; cursor: pointer;
+  transition: border-color var(--t), color var(--t);
+}
+.ev-link-add-btn:hover { border-color: var(--accent-2); color: var(--accent-2); }
+.ev-link-adder {
+  display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.ev-link-input {
+  font-size: 12px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 3px 8px; color: var(--text-primary); outline: none; width: 90px;
+}
+.ev-link-input:focus { border-color: var(--accent-2); }
+.ev-link-url { width: 160px; }
+.ev-link-save {
+  font-size: 11px; font-weight: 600; padding: 3px 10px;
+  background: var(--accent-2); color: #fff; border: none;
+  border-radius: 8px; cursor: pointer;
+}
+.ev-link-save:disabled { opacity: 0.4; cursor: default; }
+.ev-link-cancel {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 12px; padding: 0 3px;
+}
+
 /* ── Event documents ─────────────────────────── */
 .doc-list {
   display: flex;
