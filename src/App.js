@@ -199,6 +199,10 @@ export default function App() {
   /* suggestion likes */
   const [suggLikes, setSuggLikes] = useState([])
 
+  /* event documents */
+  const [docs, setDocs]             = useState({}) // { eventId: [{id,file_name,file_path,uploaded_by}] }
+  const [uploadingDoc, setUploadingDoc] = useState(null) // eventId currently uploading
+
   /* weather */
   const [weather, setWeather]         = useState({})
   const [weatherTripId, setWeatherTripId] = useState(null)
@@ -482,6 +486,46 @@ export default function App() {
     fetchReactions()
     setReactionPicker(null)
   }
+
+  /* ── Event documents ─────────────────────────── */
+  const fetchDocs = useCallback(async () => {
+    if (!activeTrip) return
+    const { data } = await supabase.from('event_documents').select('*').eq('trip_id', activeTrip.id)
+    if (!data) return
+    const grouped = {}
+    data.forEach(d => { if (!grouped[d.event_id]) grouped[d.event_id] = []; grouped[d.event_id].push(d) })
+    setDocs(grouped)
+  }, [activeTrip])
+
+  useEffect(() => {
+    if (!activeTrip) return
+    fetchDocs()
+    const ch = supabase.channel(`docs-${activeTrip.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_documents', filter: `trip_id=eq.${activeTrip.id}` }, fetchDocs)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [activeTrip, fetchDocs])
+
+  const uploadDoc = async (eventId, file) => {
+    if (!file) return
+    const name = suggName.trim() || 'Anonymous'
+    const path = `${activeTrip.id}/${eventId}/${Date.now()}_${file.name}`
+    setUploadingDoc(eventId)
+    const { error: upErr } = await supabase.storage.from('event-docs').upload(path, file)
+    if (!upErr) {
+      await supabase.from('event_documents').insert({ event_id: eventId, trip_id: activeTrip.id, file_name: file.name, file_path: path, uploaded_by: name })
+      fetchDocs()
+    }
+    setUploadingDoc(null)
+  }
+
+  const deleteDoc = async (doc) => {
+    await supabase.storage.from('event-docs').remove([doc.file_path])
+    await supabase.from('event_documents').delete().eq('id', doc.id)
+    fetchDocs()
+  }
+
+  const docUrl = (path) => supabase.storage.from('event-docs').getPublicUrl(path).data.publicUrl
 
   /* ── Events ───────────────────────────────────── */
   const fetchEvents = useCallback(async () => {
@@ -820,6 +864,27 @@ export default function App() {
                     {ev.link && <a className="tl-card-link" href={ev.link} target="_blank" rel="noreferrer">🔗 Link</a>}
                   </div>
                   {ev.notes && <div className="tl-card-notes">{ev.notes}</div>}
+                  {/* Documents */}
+                  {(docs[ev.id]?.length > 0 || uploadingDoc === ev.id) && (
+                    <div className="doc-list">
+                      {docs[ev.id]?.map(doc => (
+                        <div key={doc.id} className="doc-row">
+                          <a className="doc-link" href={docUrl(doc.file_path)} target="_blank" rel="noreferrer">
+                            📄 {doc.file_name}
+                          </a>
+                          <span className="doc-by">by {doc.uploaded_by}</span>
+                          <button className="doc-del" onClick={() => deleteDoc(doc)} title="Remove">✕</button>
+                        </div>
+                      ))}
+                      {uploadingDoc === ev.id && <div className="doc-uploading">Uploading…</div>}
+                    </div>
+                  )}
+                  <div className="doc-attach-row">
+                    <label className="btn-attach">
+                      📎 Attach PDF
+                      <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={e => { uploadDoc(ev.id, e.target.files[0]); e.target.value = '' }} />
+                    </label>
+                  </div>
                   {/* Reactions */}
                   {(() => {
                     const evReactions = reactions.filter(r => r.event_id === ev.id)

@@ -928,6 +928,62 @@ html, body {
 }
 .reaction-picker-btn:hover { background: var(--surface-2); transform: scale(1.25); }
 
+/* ── Event documents ─────────────────────────── */
+.doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+.doc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.doc-link {
+  flex: 1;
+  color: var(--accent-2);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.doc-link:hover { text-decoration: underline; }
+.doc-by { color: var(--text-muted); font-size: 11px; flex-shrink: 0; }
+.doc-del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.doc-del:hover { color: #ef4444; opacity: 1; }
+.doc-uploading { font-size: 12px; color: var(--text-muted); padding: 2px 4px; }
+.doc-attach-row { margin: 4px 0 2px; }
+.btn-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 3px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  transition: border-color var(--t), color var(--t);
+  user-select: none;
+}
+.btn-attach:hover { border-color: var(--accent-2); color: var(--accent-2); }
+
 /* ── Weather card ────────────────────────────── */
 .weather-card {
   display: flex;
