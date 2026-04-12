@@ -881,8 +881,8 @@ export default function App() {
                   )}
                   <div className="doc-attach-row">
                     <label className="btn-attach">
-                      📎 Attach PDF
-                      <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={e => { uploadDoc(ev.id, e.target.files[0]); e.target.value = '' }} />
+                      📎 Attach file
+                      <input type="file" style={{ display: 'none' }} onChange={e => { uploadDoc(ev.id, e.target.files[0]); e.target.value = '' }} />
                     </label>
                   </div>
                   {/* Reactions */}
